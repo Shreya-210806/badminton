@@ -78,6 +78,15 @@ if (fs.existsSync(path.join(clientDistPath, 'index.html'))) {
   });
 }
 
+app.get('/', (_req, res) => {
+  res.json({
+    success: true,
+    service: 'ShuttlePulse Badminton Tournament & CRM API',
+    message: 'API is running.',
+    health: '/api/health',
+  });
+});
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
