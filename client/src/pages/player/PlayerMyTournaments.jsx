@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CalendarCheck,
@@ -8,30 +8,32 @@ import {
   Activity,
 } from 'lucide-react';
 import { apiRequest } from '../../api/client';
+import usePlayerDataRefresh from '../../hooks/usePlayerDataRefresh';
 
 export default function PlayerMyTournaments() {
   const [tournaments, setTournaments] = useState([]);
   const [fixtures, setFixtures] = useState([]);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const res = await apiRequest('/player/my-tournaments');
-        if (res.success) {
-          setTournaments(res.tournaments || []);
-          setFixtures(res.fixtures || []);
-          setResults(res.results || []);
-        }
-      } catch (err) {
-        console.error('Failed to load player tournaments:', err);
-      } finally {
-        setLoading(false);
+  const loadData = useCallback(async () => {
+    try {
+      const res = await apiRequest('/player/my-tournaments');
+      if (res.success) {
+        setTournaments(res.tournaments || []);
+        setFixtures(res.fixtures || []);
+        setResults(res.results || []);
       }
+      setLoadError('');
+    } catch (err) {
+      console.error('Failed to load player tournaments:', err);
+      setLoadError(err.message || 'Unable to load your tournaments. Please try again.');
+    } finally {
+      setLoading(false);
     }
-    loadData();
   }, []);
+  usePlayerDataRefresh(loadData);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -43,6 +45,11 @@ export default function PlayerMyTournaments() {
           Tournaments where your application is approved, including your match schedules and results.
         </p>
       </div>
+      {loadError && (
+        <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-sm text-rose-700">
+          {loadError}
+        </div>
+      )}
 
       {loading ? (
         <div className="py-20 text-center">
@@ -59,7 +66,7 @@ export default function PlayerMyTournaments() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#5B806B]/15 text-[#5B806B]">
-                    {tournament.status || 'Active'}
+                    Participating
                   </span>
                   <span className="text-xs font-bold text-[#243044]/60">
                     {entries.length} {entries.length === 1 ? 'Entry' : 'Entries'}

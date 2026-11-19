@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   FileText,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import usePlayerDataRefresh from '../../hooks/usePlayerDataRefresh';
 
 export default function PlayerApplications() {
   const { notify } = useAuth();
@@ -22,23 +23,23 @@ export default function PlayerApplications() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [search, setSearch] = useState('');
   const [cancellingId, setCancellingId] = useState(null);
+  const [loadError, setLoadError] = useState('');
 
-  const fetchApplications = async () => {
+  const fetchApplications = useCallback(async () => {
     try {
       const res = await apiRequest('/player/applications');
       if (res.success && res.applications) {
         setApplications(res.applications);
       }
+      setLoadError('');
     } catch (err) {
       console.error('Failed to load applications:', err);
+      setLoadError(err.message || 'Unable to load your applications. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchApplications();
   }, []);
+  usePlayerDataRefresh(fetchApplications);
 
   const handleCancelApplication = async (appId) => {
     if (!window.confirm('Are you sure you want to cancel this tournament application?')) {
@@ -51,6 +52,7 @@ export default function PlayerApplications() {
       });
       if (res.success) {
         notify('Application cancelled successfully.', 'info');
+        window.dispatchEvent(new Event('player-data-updated'));
         fetchApplications();
       }
     } catch (err) {
@@ -84,6 +86,11 @@ export default function PlayerApplications() {
           Review the status of your tournament entries, partner details, and approval stages.
         </p>
       </div>
+      {loadError && (
+        <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-sm text-rose-700">
+          {loadError}
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="p-4 rounded-2xl bg-white border border-[#E8DCC7] shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">

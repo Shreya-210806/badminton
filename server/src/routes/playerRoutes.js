@@ -5,6 +5,7 @@ import {
   getPlayerProfile,
   getPlayerApplications,
   getPlayerTournaments,
+  getPlayerNotificationsForUser,
   updatePlayerProfile,
   createRegistration,
   submitPaymentReference,
@@ -24,6 +25,7 @@ router.get('/dashboard', getPlayerDashboard);
 router.get('/profile', getPlayerProfile);
 router.get('/applications', getPlayerApplications);
 router.get('/my-tournaments', getPlayerTournaments);
+router.get('/notifications', getPlayerNotificationsForUser);
 router.put('/profile', updatePlayerProfile);
 router.get('/available-tournaments', getAvailableTournaments);
 router.get('/updates', getTournamentUpdates);

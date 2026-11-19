@@ -26,6 +26,34 @@ const slugify = (text) =>
 const nextCode = (prefix) =>
   `${prefix}-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
 
+const notifyApprovedTournamentPlayers = async (tournamentId, title, message, sentBy) => {
+  const registrations = await Registration.find({
+    tournament: tournamentId,
+    status: 'approved',
+  }).populate('player', 'user');
+  const recipientUsers = [
+    ...new Map(
+      registrations
+        .map((registration) => registration.user || registration.player?.user)
+        .filter(Boolean)
+        .map((userId) => [String(userId), userId])
+    ).values(),
+  ];
+
+  if (!recipientUsers.length) return;
+
+  await Notification.create({
+    title,
+    message,
+    type: 'schedule',
+    audience: 'individual',
+    tournament: tournamentId,
+    recipientUsers,
+    recipientCount: recipientUsers.length,
+    sentBy,
+  });
+};
+
 // 1. OVERVIEW METRICS
 export const getCrmOverview = async (_req, res, next) => {
   try {
@@ -1019,6 +1047,13 @@ export const generateCategoryDraw = async (req, res, next) => {
     const allMatchesToSave = roundMatchesMap.flat();
     const createdMatches = await Match.insertMany(allMatchesToSave);
 
+    await notifyApprovedTournamentPlayers(
+      tournament._id,
+      `Fixtures Published: ${tournament.name}`,
+      `${createdMatches.length} ${category.name} fixture(s) have been added to the tournament schedule.`,
+      req.user._id
+    );
+
     await recordAudit({
       req,
       action: 'DRAW_GENERATE',
@@ -1091,6 +1126,13 @@ export const createManualMatch = async (req, res, next) => {
       summary: `Created fixture ${match.matchCode}: ${sideALabel} vs ${sideBLabel} (${court})`,
     });
 
+    await notifyApprovedTournamentPlayers(
+      tournament._id,
+      `Fixture Scheduled: ${tournament.name}`,
+      `${category.name} match ${match.matchCode} is scheduled for ${new Date(match.scheduledAt).toLocaleString()} on ${match.court}.`,
+      req.user._id
+    );
+
     res.status(201).json({ success: true, message: 'Fixture created.', match });
   } catch (err) {
     next(err);
@@ -1118,6 +1160,18 @@ export const updateMatchSchedule = async (req, res, next) => {
     if (published !== undefined) match.published = Boolean(published);
 
     await match.save();
+
+    if (scheduledAt !== undefined || court !== undefined || status !== undefined) {
+      const tournament = await Tournament.findById(match.tournament);
+      if (tournament) {
+        await notifyApprovedTournamentPlayers(
+          tournament._id,
+          `Schedule Updated: ${tournament.name}`,
+          `${match.matchCode} is now scheduled for ${new Date(match.scheduledAt).toLocaleString()} on ${match.court} (${match.status}).`,
+          req.user._id
+        );
+      }
+    }
 
     await recordAudit({
       req,

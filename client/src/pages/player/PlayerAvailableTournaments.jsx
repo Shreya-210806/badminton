@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Trophy,
   Search,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import usePlayerDataRefresh, { notifyPlayerDataChanged } from '../../hooks/usePlayerDataRefresh';
 
 const isCategoryEligible = (category, player) => {
   const genderEligible =
@@ -60,7 +61,7 @@ export default function PlayerAvailableTournaments() {
   const [formSuccess, setFormSuccess] = useState(null);
   const [agreeRules, setAgreeRules] = useState(false);
 
-  const fetchTournaments = async () => {
+  const fetchTournaments = useCallback(async () => {
     try {
       const profileRes = await apiRequest('/player/profile');
       const [tournamentRes, applicationsRes] = await Promise.all([
@@ -81,11 +82,8 @@ export default function PlayerAvailableTournaments() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchTournaments();
   }, []);
+  usePlayerDataRefresh(fetchTournaments);
 
   const openApplyModal = (tournament) => {
     const categories = (tournament.categories || []).filter((category) =>
@@ -154,6 +152,7 @@ export default function PlayerAvailableTournaments() {
       if (res.success) {
         setFormSuccess(res.registration);
         setApplications((current) => [...current, res.registration]);
+        notifyPlayerDataChanged();
         notify('Application submitted successfully! Application ID: ' + res.registration.registrationNumber, 'success');
       }
     } catch (err) {
@@ -250,7 +249,7 @@ export default function PlayerAvailableTournaments() {
 
           {/* Age group filter */}
           <div className="flex items-center gap-1.5">
-            <span className="font-bold text-[#243044]/70">Age Category:</span>
+            <span className="font-bold text-[#243044]/70">Eligible age group:</span>
             <select
               value={ageFilter}
               onChange={(e) => setAgeFilter(e.target.value)}

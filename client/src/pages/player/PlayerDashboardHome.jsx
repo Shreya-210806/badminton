@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Trophy,
@@ -15,6 +15,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { apiRequest } from '../../api/client';
+import usePlayerDataRefresh from '../../hooks/usePlayerDataRefresh';
 
 export default function PlayerDashboardHome() {
   const [loading, setLoading] = useState(true);
@@ -25,24 +26,25 @@ export default function PlayerDashboardHome() {
     notifications: [],
     fixtures: [],
     results: [],
+    availableTournaments: [],
   });
+  const [loadError, setLoadError] = useState('');
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const res = await apiRequest('/player/dashboard');
       if (res.success) {
         setData(res);
+        setLoadError('');
       }
     } catch (err) {
       console.error('Failed to load player dashboard:', err);
+      setLoadError(err.message || 'Unable to load your dashboard. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
   }, []);
+  usePlayerDataRefresh(loadData);
 
   if (loading) {
     return (
@@ -53,7 +55,15 @@ export default function PlayerDashboardHome() {
     );
   }
 
-  const { player, standingRank, registrations = [], notifications = [], fixtures = [] } = data;
+  const {
+    player,
+    selectedLocation,
+    standingRank,
+    registrations = [],
+    notifications = [],
+    fixtures = [],
+    availableTournaments = [],
+  } = data;
 
   // Stats calculation
   const totalApplied = registrations.length;
@@ -64,6 +74,11 @@ export default function PlayerDashboardHome() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* 1. Welcome Header Banner */}
+      {loadError && (
+        <div role="alert" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-sm text-rose-700">
+          {loadError}
+        </div>
+      )}
       <div className="p-6 sm:p-8 rounded-3xl bg-white border border-[#E8DCC7] shadow-sm relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
@@ -72,10 +87,14 @@ export default function PlayerDashboardHome() {
               <span>Thane District Player Portal</span>
             </div>
             <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#243044]">
-              Welcome!
+              Welcome, {player?.fullName || 'Player'}!
             </h1>
             <p className="text-xs sm:text-sm text-[#243044]/70 max-w-2xl leading-relaxed">
-              Track your tournament applications, upcoming match schedules, referee updates, and Thane District standing points.
+              Track applications, approved tournaments, match schedules, and updates for your selected stadium.
+            </p>
+            <p className="inline-flex items-center gap-1.5 text-xs font-bold text-[#5B806B]">
+              <MapPin className="w-3.5 h-3.5" />
+              Selected stadium: {selectedLocation || player?.club || 'Choose a stadium in My Profile'}
             </p>
           </div>
 
@@ -96,6 +115,38 @@ export default function PlayerDashboardHome() {
           </div>
         </div>
       </div>
+
+      <section className="p-5 sm:p-6 rounded-2xl bg-white border border-[#E8DCC7] shadow-xs">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="font-display font-bold text-lg text-[#243044]">Available at your stadium</h2>
+            <p className="text-xs text-[#243044]/60">
+              {selectedLocation ? `Eligible tournaments in ${selectedLocation}` : 'Select a supported stadium in My Profile to see local tournaments.'}
+            </p>
+          </div>
+          <Link to="/player/tournaments" className="text-xs font-bold text-[#5B806B]">
+            Browse all
+          </Link>
+        </div>
+        {availableTournaments.length ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {availableTournaments.slice(0, 4).map((tournament) => (
+              <div key={tournament._id} className="p-3 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7]">
+                <div className="font-bold text-sm text-[#243044]">{tournament.name}</div>
+                <div className="text-[11px] text-[#243044]/70 mt-1">
+                  {[tournament.venue, tournament.city].filter(Boolean).join(', ') || 'Location not listed'} · {(tournament.categories || []).map((category) => category.name).join(', ')}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="py-4 text-center text-xs text-[#243044]/60">
+            {selectedLocation
+              ? 'No eligible tournaments are currently published for this stadium.'
+              : 'Choose a supported stadium in My Profile to see local tournaments.'}
+          </p>
+        )}
+      </section>
 
       {/* 2. Key Metrics Cards (Requirement 1: Total Applied, Approved, Pending, Rejected) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -181,7 +232,7 @@ export default function PlayerDashboardHome() {
                       </span>
                     </div>
                     <h4 className="font-display font-bold text-sm text-[#243044]">
-                      {reg.tournament?.name || 'Thane Championship'}
+                      {reg.tournament?.name || 'Tournament'}
                     </h4>
                     <p className="text-xs text-[#243044]/70">
                       {reg.categoryName} • Format: <span className="capitalize">{reg.format}</span>
@@ -189,7 +240,7 @@ export default function PlayerDashboardHome() {
                     <div className="flex items-center gap-3 text-[11px] text-[#243044]/60 pt-1">
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3 h-3 text-[#5B806B]" />
-                        {reg.tournament?.venue || 'Thane Venue'}
+                        {reg.tournament?.venue || 'Venue not listed'}
                       </span>
                       <span>•</span>
                       <span>Applied: {new Date(reg.createdAt).toLocaleDateString()}</span>

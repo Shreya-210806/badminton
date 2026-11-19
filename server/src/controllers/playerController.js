@@ -46,77 +46,124 @@ const getPlayerRegistrations = (user, player) =>
     .populate('tournament', 'name slug venue city address startDate endDate status categories')
     .populate('partner', 'fullName email club')
     .populate('team', 'name teamCode status')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .then((registrations) => {
+      const selectedLocation = getPlayerSelectedLocation(player);
+      if (!selectedLocation) return [];
+      return registrations.filter(
+        (registration) =>
+          getTournamentLocation(registration.tournament) === selectedLocation
+      );
+    });
 
-const getPlayerMatches = async (player, approvedRegistrations) => {
+const getAvailableTournamentsForPlayer = async (player) => {
+  const selectedLocation = getPlayerSelectedLocation(player);
+  if (!selectedLocation) return [];
+
+  const tournaments = await Tournament.find({
+    status: { $in: ['published', 'ongoing'] },
+  }).sort({ startDate: 1 });
+
+  return tournaments
+    .filter((tournament) => getTournamentLocation(tournament) === selectedLocation)
+    .map((tournament) => ({
+      ...tournament.toObject(),
+      location: selectedLocation,
+      categories: (tournament.categories || []).filter((category) =>
+        isCategoryEligible(category, player)
+      ),
+    }))
+    .filter((tournament) => tournament.categories.length > 0);
+};
+
+const getPlayerNotifications = async (user, registrations) => {
   const tournamentIds = [
-    ...new Set(approvedRegistrations.map((r) => String(r.tournament?._id || r.tournament))),
+    ...new Set(registrations.map((registration) =>
+      String(registration.tournament?._id || registration.tournament)
+    )),
   ];
-  const categoryCodes = [...new Set(approvedRegistrations.map((r) => r.categoryCode))];
-  const teamIds = approvedRegistrations.map((r) => r.team?._id || r.team).filter(Boolean);
-
-  if (!tournamentIds.length || !categoryCodes.length) return [];
-
-  return Match.find({
-    tournament: { $in: tournamentIds },
-    categoryCode: { $in: categoryCodes },
-    published: true,
+  const notifications = await Notification.find({
     $or: [
-      { 'sideA.player': player._id },
-      { 'sideB.player': player._id },
-      ...(teamIds.length
-        ? [{ 'sideA.team': { $in: teamIds } }, { 'sideB.team': { $in: teamIds } }]
+      { recipientUsers: user._id },
+      { audience: { $in: ['all', 'players'] }, tournament: null },
+      ...(tournamentIds.length
+        ? [{
+            audience: { $in: ['all', 'players', 'tournament'] },
+            tournament: { $in: tournamentIds },
+          }]
         : []),
     ],
+  }).sort({ createdAt: -1 });
+
+  return notifications.slice(0, 20).map((notification) => {
+    const object = notification.toObject();
+    object.isRead = (notification.readBy || []).some(
+      (id) => String(id) === String(user._id)
+    );
+    return object;
+  });
+};
+
+const getPlayerMatches = async (approvedRegistrations) => {
+  const registrationFilters = [
+    ...new Map(
+      approvedRegistrations
+        .filter((registration) => registration.tournament && registration.categoryCode)
+        .map((registration) => {
+          const tournamentId = registration.tournament?._id || registration.tournament;
+          return [`${tournamentId}:${registration.categoryCode}`, {
+            tournament: tournamentId,
+            categoryCode: registration.categoryCode,
+          }];
+        })
+    ).values(),
+  ];
+
+  if (!registrationFilters.length) return [];
+
+  return Match.find({
+    $or: registrationFilters,
+    published: true,
   })
     .populate('tournament', 'name slug venue city')
     .sort({ scheduledAt: 1 });
+};
+
+export const getPlayerNotificationsForUser = async (req, res, next) => {
+  try {
+    const player = await getPlayerForUser(req.user);
+    const registrations = await getPlayerRegistrations(req.user, player);
+    const notifications = await getPlayerNotifications(req.user, registrations);
+    res.json({ success: true, notifications });
+  } catch (err) {
+    next(err);
+  }
 };
 
 export const getPlayerDashboard = async (req, res, next) => {
   try {
     const player = await getPlayerForUser(req.user);
     const registrations = await getPlayerRegistrations(req.user, player);
-    const registeredTournamentIds = [
-      ...new Set(registrations.map((r) => String(r.tournament?._id || r.tournament))),
-    ];
     const approvedRegistrations = registrations.filter((r) => r.status === 'approved');
+    const registrationIds = registrations.map((registration) => registration._id);
 
-    const [payments, matches, notifications, rankPosition, orgSettings] = await Promise.all([
-      Payment.find({ player: player._id })
+    const [payments, matches, notifications, rankPosition, orgSettings, availableTournaments] = await Promise.all([
+      Payment.find({ registration: { $in: registrationIds } })
         .populate('tournament', 'name slug')
         .populate('registration', 'registrationNumber categoryName')
         .sort({ createdAt: -1 }),
-      getPlayerMatches(player, approvedRegistrations),
-      Notification.find({
-        $or: [
-          { audience: { $in: ['all', 'players'] } },
-          { recipientUsers: req.user._id },
-          ...(registeredTournamentIds.length
-            ? [{ tournament: { $in: registeredTournamentIds } }]
-            : []),
-        ],
-      })
-        .sort({ createdAt: -1 })
-        .limit(20),
+      getPlayerMatches(approvedRegistrations),
+      getPlayerNotifications(req.user, registrations),
       Player.countDocuments({ rankingPoints: { $gt: player.rankingPoints } }),
       OrganizationSetting.findOne({ singletonKey: 'default' }),
+      getAvailableTournamentsForPlayer(player),
     ]);
-
-    const registeredTournamentIdSet = new Set(registeredTournamentIds);
-    const enrichedNotifications = notifications
-      .filter(
-        (n) => !n.tournament || registeredTournamentIdSet.has(String(n.tournament))
-      )
-      .map((n) => {
-        const obj = n.toObject();
-        obj.isRead = (n.readBy || []).some((id) => String(id) === String(req.user._id));
-        return obj;
-      });
 
     res.json({
       success: true,
       player,
+      selectedLocation: getPlayerSelectedLocation(player),
+      availableTournaments,
       standingRank: rankPosition + 1,
       registrations,
       payments,
@@ -124,7 +171,7 @@ export const getPlayerDashboard = async (req, res, next) => {
         ['scheduled', 'live', 'postponed'].includes(m.status)
       ),
       results: matches.filter((m) => m.status === 'completed' || m.status === 'walkover'),
-      notifications: enrichedNotifications,
+      notifications,
       paymentInstructions: orgSettings?.paymentInstructions || '',
     });
   } catch (err) {
@@ -170,7 +217,7 @@ export const getPlayerTournaments = async (req, res, next) => {
       tournamentsById.get(tournamentId).entries.push(registration);
     });
 
-    const matches = await getPlayerMatches(player, approvedRegistrations);
+    const matches = await getPlayerMatches(approvedRegistrations);
     res.json({
       success: true,
       tournaments: [...tournamentsById.values()],
@@ -342,11 +389,15 @@ export const createRegistration = async (req, res, next) => {
       });
     }
 
-    if (!tournamentLocations.includes(getTournamentLocation(tournament)) ||
+    const selectedLocation = getPlayerSelectedLocation(player);
+    if (
+      !selectedLocation ||
+      getTournamentLocation(tournament) !== selectedLocation ||
+      !tournamentLocations.includes(selectedLocation) ||
       !isCategoryEligible(category, player)) {
       return res.status(400).json({
         success: false,
-        message: `This event is not available in a supported location or does not match your gender and age eligibility for ${category.name}.`,
+        message: `This event is not at your selected stadium or does not match your gender and age eligibility for ${category.name}.`,
       });
     }
 
@@ -616,13 +667,43 @@ export const submitPaymentReference = async (req, res, next) => {
 export const markNotificationRead = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const player = await getPlayerForUser(req.user);
+    const registrations = await getPlayerRegistrations(req.user, player);
+    const tournamentIds = [
+      ...new Set(registrations.map((registration) =>
+        String(registration.tournament?._id || registration.tournament)
+      )),
+    ];
+    const ownNotificationFilter = {
+      $or: [
+        { recipientUsers: req.user._id },
+        { audience: { $in: ['all', 'players'] }, tournament: null },
+        ...(tournamentIds.length
+          ? [{
+              audience: { $in: ['all', 'players', 'tournament'] },
+              tournament: { $in: tournamentIds },
+            }]
+          : []),
+      ],
+    };
+
     if (id === 'all') {
       await Notification.updateMany(
-        { readBy: { $ne: req.user._id } },
+        { ...ownNotificationFilter, readBy: { $ne: req.user._id } },
         { $addToSet: { readBy: req.user._id } }
       );
     } else {
-      await Notification.findByIdAndUpdate(id, {
+      const notification = await Notification.findOne({
+        _id: id,
+        ...ownNotificationFilter,
+      });
+      if (!notification) {
+        return res.status(404).json({
+          success: false,
+          message: 'Notification not found for your account.',
+        });
+      }
+      await Notification.findByIdAndUpdate(notification._id, {
         $addToSet: { readBy: req.user._id },
       });
     }
@@ -691,7 +772,7 @@ export const getTournamentUpdates = async (req, res, next) => {
             .populate('tournament', 'name venue city startDate endDate')
             .sort({ isPinned: -1, createdAt: -1 })
         : [],
-      getPlayerMatches(player, approvedRegistrations),
+      getPlayerMatches(approvedRegistrations),
     ]);
 
     res.json({
@@ -709,28 +790,8 @@ export const getAvailableTournaments = async (req, res, next) => {
   try {
     const player = await getPlayerForUser(req.user);
     const selectedLocation = getPlayerSelectedLocation(player);
-    const tournaments = await Tournament.find({
-      status: { $in: ['published', 'ongoing'] },
-    }).sort({ startDate: 1 });
-    const eligibleTournaments = tournaments
-      .map((tournament) => ({
-        ...tournament.toObject(),
-        location: getTournamentLocation(tournament),
-        categories: (tournament.categories || []).filter((category) =>
-          isCategoryEligible(category, player)
-        ),
-      }))
-      .filter((tournament) => tournamentLocations.includes(tournament.location))
-      .filter((tournament) => tournament.categories.length > 0);
-
-    eligibleTournaments.sort((left, right) => {
-      const leftMatches = left.location === selectedLocation;
-      const rightMatches = right.location === selectedLocation;
-      if (leftMatches !== rightMatches) return leftMatches ? -1 : 1;
-      return new Date(left.startDate) - new Date(right.startDate);
-    });
-
-    res.json({ success: true, selectedLocation, tournaments: eligibleTournaments });
+    const tournaments = await getAvailableTournamentsForPlayer(player);
+    res.json({ success: true, selectedLocation, tournaments });
   } catch (err) {
     next(err);
   }

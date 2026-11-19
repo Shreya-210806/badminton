@@ -1,4 +1,13 @@
-export const tournamentLocations = ['Kalwa', 'Mumbra', 'Ambernath', 'Thane'];
+export const tournamentLocations = [
+  'Dombivli',
+  'Kalwa',
+  'Mumbra',
+  'Ambernath',
+  'Thane',
+  'Kalyan',
+  'Bhiwandi',
+  'Badlapur',
+];
 
 const normalize = (value) =>
   ` ${String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
@@ -24,6 +33,7 @@ export const ageGroupForAge = (age) => {
 };
 
 export const getTournamentLocation = (tournament) => {
+  if (!tournament) return null;
   const tournamentText = normalize(
     [tournament.city, tournament.venue, tournament.address].filter(Boolean).join(' ')
   );

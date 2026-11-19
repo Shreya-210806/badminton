@@ -25,20 +25,26 @@ export default function PlayerLayout() {
 
   const fetchUnread = async () => {
     try {
-      const res = await apiRequest('/player/dashboard');
+      const res = await apiRequest('/player/notifications');
       if (res.notifications) {
         const unread = res.notifications.filter((n) => !n.isRead).length;
         setUnreadCount(unread);
       }
-    } catch (_err) {
-      // ignore
+    } catch (err) {
+      console.error('Failed to refresh notification count:', err);
     }
   };
 
   useEffect(() => {
     fetchUnread();
     const interval = setInterval(fetchUnread, 15000);
-    return () => clearInterval(interval);
+    window.addEventListener('focus', fetchUnread);
+    window.addEventListener('player-data-updated', fetchUnread);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', fetchUnread);
+      window.removeEventListener('player-data-updated', fetchUnread);
+    };
   }, []);
 
   const menuItems = [

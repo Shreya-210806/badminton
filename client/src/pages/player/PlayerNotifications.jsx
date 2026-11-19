@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Bell,
   CheckCircle2,
@@ -10,29 +10,29 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import usePlayerDataRefresh, { notifyPlayerDataChanged } from '../../hooks/usePlayerDataRefresh';
 
 export default function PlayerNotifications() {
   const { notify } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState(null);
+  const [loadError, setLoadError] = useState('');
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
-      const res = await apiRequest('/player/dashboard');
-      if (res.success && res.notifications) {
-        setNotifications(res.notifications);
-      }
+      const res = await apiRequest('/player/notifications');
+      if (!res.success) throw new Error(res.message || 'Unable to load notifications.');
+      setNotifications(res.notifications || []);
+      setLoadError('');
     } catch (err) {
       console.error('Failed to load notifications:', err);
+      setLoadError(err.message || 'Unable to load notifications. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchNotifications();
   }, []);
+  usePlayerDataRefresh(fetchNotifications);
 
   const handleMarkAsRead = async (id) => {
     setMarkingId(id);
@@ -40,6 +40,7 @@ export default function PlayerNotifications() {
       await apiRequest(`/player/notifications/${id}/read`, {
         method: 'PUT',
       });
+      notifyPlayerDataChanged();
       if (id === 'all') {
         setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
         notify('All notifications marked as read.', 'success');
@@ -50,6 +51,7 @@ export default function PlayerNotifications() {
       }
     } catch (err) {
       console.error('Failed to mark read:', err);
+      notify(err.message || 'Unable to update notification status.', 'error');
     } finally {
       setMarkingId(null);
     }
@@ -68,6 +70,11 @@ export default function PlayerNotifications() {
             Real-time updates regarding your applications, tournament schedule changes, court assignments, and match fixtures.
           </p>
         </div>
+        {loadError && (
+          <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-sm text-rose-700">
+            {loadError}
+          </div>
+        )}
 
         {unreadCount > 0 && (
           <button
@@ -109,7 +116,7 @@ export default function PlayerNotifications() {
                     <Trophy className="w-4 h-4" />
                   ) : n.type === 'result' ? (
                     <Activity className="w-4 h-4" />
-                  ) : (
+                  ) : loadError ? null : (
                     <Bell className="w-4 h-4" />
                   )}
                 </div>

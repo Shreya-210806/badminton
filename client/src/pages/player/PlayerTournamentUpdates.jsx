@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Radio,
   Calendar,
@@ -11,30 +11,32 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { apiRequest } from '../../api/client';
+import usePlayerDataRefresh from '../../hooks/usePlayerDataRefresh';
 
 export default function PlayerTournamentUpdates() {
   const [updates, setUpdates] = useState([]);
   const [fixtures, setFixtures] = useState([]);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const res = await apiRequest('/player/updates');
-        if (res.success) {
-          setUpdates(res.updates || []);
-          setFixtures(res.fixtures || []);
-          setResults(res.results || []);
-        }
-      } catch (err) {
-        console.error('Failed to load updates:', err);
-      } finally {
-        setLoading(false);
+  const loadData = useCallback(async () => {
+    try {
+      const res = await apiRequest('/player/updates');
+      if (res.success) {
+        setUpdates(res.updates || []);
+        setFixtures(res.fixtures || []);
+        setResults(res.results || []);
       }
+      setLoadError('');
+    } catch (err) {
+      console.error('Failed to load updates:', err);
+      setLoadError(err.message || 'Unable to load tournament updates. Please try again.');
+    } finally {
+      setLoading(false);
     }
-    loadData();
   }, []);
+  usePlayerDataRefresh(loadData);
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
@@ -46,6 +48,11 @@ export default function PlayerTournamentUpdates() {
           Official court schedules, match fixture announcements, venue updates, and live referee alerts for your registered tournaments.
         </p>
       </div>
+      {loadError && (
+        <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-sm text-rose-700">
+          {loadError}
+        </div>
+      )}
 
       {loading ? (
         <div className="py-20 text-center">
