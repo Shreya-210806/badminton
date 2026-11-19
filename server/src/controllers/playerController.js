@@ -14,7 +14,6 @@ import {
   getPlayerSelectedLocation,
   getTournamentLocation,
   isCategoryEligible,
-  tournamentLocations,
 } from '../utils/playerEligibility.js';
 
 const nextCode = (prefix) =>
@@ -46,34 +45,29 @@ const getPlayerRegistrations = (user, player) =>
     .populate('tournament', 'name slug venue city address startDate endDate status categories')
     .populate('partner', 'fullName email club')
     .populate('team', 'name teamCode status')
-    .sort({ createdAt: -1 })
-    .then((registrations) => {
-      const selectedLocation = getPlayerSelectedLocation(player);
-      if (!selectedLocation) return [];
-      return registrations.filter(
-        (registration) =>
-          getTournamentLocation(registration.tournament) === selectedLocation
-      );
-    });
+    .sort({ createdAt: -1 });
 
 const getAvailableTournamentsForPlayer = async (player) => {
   const selectedLocation = getPlayerSelectedLocation(player);
-  if (!selectedLocation) return [];
-
   const tournaments = await Tournament.find({
     status: { $in: ['published', 'ongoing'] },
   }).sort({ startDate: 1 });
 
   return tournaments
-    .filter((tournament) => getTournamentLocation(tournament) === selectedLocation)
     .map((tournament) => ({
       ...tournament.toObject(),
-      location: selectedLocation,
+      location: getTournamentLocation(tournament),
       categories: (tournament.categories || []).filter((category) =>
         isCategoryEligible(category, player)
       ),
     }))
-    .filter((tournament) => tournament.categories.length > 0);
+    .filter((tournament) => tournament.categories.length > 0)
+    .sort((left, right) => {
+      const leftMatches = left.location === selectedLocation;
+      const rightMatches = right.location === selectedLocation;
+      if (leftMatches !== rightMatches) return leftMatches ? -1 : 1;
+      return new Date(left.startDate) - new Date(right.startDate);
+    });
 };
 
 const getPlayerNotifications = async (user, registrations) => {
@@ -389,15 +383,10 @@ export const createRegistration = async (req, res, next) => {
       });
     }
 
-    const selectedLocation = getPlayerSelectedLocation(player);
-    if (
-      !selectedLocation ||
-      getTournamentLocation(tournament) !== selectedLocation ||
-      !tournamentLocations.includes(selectedLocation) ||
-      !isCategoryEligible(category, player)) {
+    if (!isCategoryEligible(category, player)) {
       return res.status(400).json({
         success: false,
-        message: `This event is not at your selected stadium or does not match your gender and age eligibility for ${category.name}.`,
+        message: `This event does not match your gender and age eligibility for ${category.name}.`,
       });
     }
 
@@ -757,8 +746,8 @@ export const getTournamentUpdates = async (req, res, next) => {
   try {
     const player = await getPlayerForUser(req.user);
     const registrations = await getPlayerRegistrations(req.user, player);
-    const playerRegistrations = registrations.filter((registration) =>
-      ['approved', 'pending', 'waitlisted'].includes(registration.status)
+    const playerRegistrations = registrations.filter(
+      (registration) => registration.status === 'approved'
     );
 
     const tournamentIds = [
