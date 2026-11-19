@@ -33,7 +33,9 @@ const isCategoryEligible = (category, player) => {
       : ['35+', '45+', 'Open'];
   const ageEligible =
     !category.ageGroup ||
-    (Number.isInteger(age) && ageGroups.includes(category.ageGroup));
+    (Number.isInteger(age) && age >= 1 && age <= 120
+      ? ageGroups.includes(category.ageGroup)
+      : category.ageGroup === player?.ageGroup);
 
   return genderEligible && ageEligible;
 };

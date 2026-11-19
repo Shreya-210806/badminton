@@ -60,9 +60,16 @@ export const isCategoryEligible = (category, player) => {
     category.gender === player.gender ||
     (category.gender === 'Mixed' && ['Male', 'Female'].includes(player.gender));
   const eligibleAgeGroups = ageGroupsForAge(player.age);
+  const ageGroups = [...eligibleAgeGroups];
+  if (
+    ageGroups.length === 0 &&
+    ['U15', 'U19', 'Open', '35+', '45+'].includes(player.ageGroup)
+  ) {
+    ageGroups.push(player.ageGroup);
+  }
   const ageEligible =
     !category.ageGroup ||
-    eligibleAgeGroups.includes(category.ageGroup);
+    ageGroups.includes(category.ageGroup);
 
   return genderEligible && ageEligible;
 };
