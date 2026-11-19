@@ -21,17 +21,11 @@ export default function PlayerTournamentUpdates() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [updatesRes, dashboardRes] = await Promise.allSettled([
-          apiRequest('/player/updates'),
-          apiRequest('/player/dashboard'),
-        ]);
-
-        if (updatesRes.status === 'fulfilled' && updatesRes.value.updates) {
-          setUpdates(updatesRes.value.updates);
-        }
-        if (dashboardRes.status === 'fulfilled' && dashboardRes.value.fixtures) {
-          setFixtures(dashboardRes.value.fixtures);
-          setResults(dashboardRes.value.results || []);
+        const res = await apiRequest('/player/updates');
+        if (res.success) {
+          setUpdates(res.updates || []);
+          setFixtures(res.fixtures || []);
+          setResults(res.results || []);
         }
       } catch (err) {
         console.error('Failed to load updates:', err);
@@ -135,11 +129,14 @@ export default function PlayerTournamentUpdates() {
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-bold text-[#5B806B]">{m.court || 'Court Assigned'}</span>
                         <span className="text-[11px] font-semibold text-[#243044]/70 bg-[#F5F4EF] px-2 py-0.5 rounded">
-                          {m.round || 'Round'}
+                          {m.status} · {m.round || 'Round'}
                         </span>
                       </div>
 
                       <div className="space-y-1.5 font-display text-sm font-bold text-[#243044]">
+                        <div className="text-[11px] text-[#243044]/60">
+                          {m.categoryName || m.categoryCode}
+                        </div>
                         <div className="flex items-center justify-between">
                           <span>{m.sideA?.label || 'Side A'}</span>
                           <span className="font-mono text-xs text-[#5B806B]">Seed {m.sideA?.seed || '-'}</span>

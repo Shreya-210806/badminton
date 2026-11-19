@@ -7,7 +7,16 @@ export default defineModel('TournamentUpdate', {
     content: { type: 'string', required: true },
     type: {
       type: 'string',
-      enum: ['announcement', 'schedule_change', 'fixture', 'result', 'venue', 'instruction'],
+      enum: [
+        'announcement',
+        'event',
+        'match_timing',
+        'schedule_change',
+        'fixture',
+        'result',
+        'venue',
+        'instruction',
+      ],
       default: 'announcement',
     },
     isPinned: { type: 'boolean', default: false },

@@ -18,22 +18,9 @@ export default function PlayerMyTournaments() {
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await apiRequest('/player/dashboard');
-        if (res.success && res.registrations) {
-          const approvedEntries = res.registrations.filter((registration) => registration.status === 'approved');
-          const map = new Map();
-          approvedEntries.forEach((r) => {
-            if (r.tournament && !map.has(r.tournament._id)) {
-              map.set(r.tournament._id, {
-                tournament: r.tournament,
-                entries: [],
-              });
-            }
-            if (r.tournament) {
-              map.get(r.tournament._id).entries.push(r);
-            }
-          });
-          setTournaments(Array.from(map.values()));
+        const res = await apiRequest('/player/my-tournaments');
+        if (res.success) {
+          setTournaments(res.tournaments || []);
           setFixtures(res.fixtures || []);
           setResults(res.results || []);
         }
@@ -132,6 +119,8 @@ export default function PlayerMyTournaments() {
                       const entry = entries.find(
                         (candidate) =>
                           String(candidate.tournament?._id) === String(tournament._id) &&
+                          String(match.tournament?._id || match.tournament) ===
+                            String(tournament._id) &&
                           candidate.categoryCode === match.categoryCode
                       );
                       return Boolean(entry);
@@ -154,6 +143,8 @@ export default function PlayerMyTournaments() {
                       !entries.some(
                         (entry) =>
                           String(entry.tournament?._id) === String(tournament._id) &&
+                          String(match.tournament?._id || match.tournament) ===
+                            String(tournament._id) &&
                           entry.categoryCode === match.categoryCode
                       )
                   ) && (
@@ -164,6 +155,8 @@ export default function PlayerMyTournaments() {
                       entries.some(
                         (entry) =>
                           String(entry.tournament?._id) === String(tournament._id) &&
+                          String(match.tournament?._id || match.tournament) ===
+                            String(tournament._id) &&
                           entry.categoryCode === match.categoryCode
                       )
                     )

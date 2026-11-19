@@ -7,7 +7,7 @@ export default defineModel('Player', {
     fullName: { type: 'string', required: true, trim: true },
     email: { type: 'string', required: true, lowercase: true, trim: true },
     phone: { type: 'string', default: '', trim: true },
-    gender: { type: 'string', enum: ['Male', 'Female', 'Other'], default: 'Male' },
+    gender: { type: 'string', enum: ['Male', 'Female', 'Other'], default: '' },
     dateOfBirth: { type: 'date' },
     ageGroup: { type: 'string', enum: ['U15', 'U19', 'Open', '35+', '45+'], default: 'Open' },
     club: { type: 'string', default: 'Independent', trim: true },

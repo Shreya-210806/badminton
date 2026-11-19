@@ -27,8 +27,7 @@ const isCategoryEligible = (category, player) => {
   return genderEligible && ageEligible;
 };
 
-const isActiveApplication = (application) =>
-  !['rejected', 'cancelled'].includes(application.status);
+const hasApplication = (application) => Boolean(application?._id);
 
 export default function PlayerAvailableTournaments() {
   const { notify } = useAuth();
@@ -36,6 +35,7 @@ export default function PlayerAvailableTournaments() {
   const [player, setPlayer] = useState(null);
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [formatFilter, setFormatFilter] = useState('all');
   const [ageFilter, setAgeFilter] = useState('all');
@@ -51,19 +51,21 @@ export default function PlayerAvailableTournaments() {
 
   const fetchTournaments = async () => {
     try {
-      const [tournamentRes, dashboardRes] = await Promise.all([
+      const profileRes = await apiRequest('/player/profile');
+      const [tournamentRes, applicationsRes] = await Promise.all([
         apiRequest('/player/available-tournaments'),
-        apiRequest('/player/dashboard'),
+        apiRequest('/player/applications'),
       ]);
+      setPlayer(profileRes.player);
       if (tournamentRes.success) {
         setTournaments(tournamentRes.tournaments);
       }
-      if (dashboardRes.success) {
-        setPlayer(dashboardRes.player);
-        setApplications(dashboardRes.registrations || []);
+      if (applicationsRes.success) {
+        setApplications(applicationsRes.applications || []);
       }
     } catch (err) {
       console.error('Failed to load tournaments and player profile:', err);
+      setLoadError(err.message || 'Unable to load tournaments and your profile.');
     } finally {
       setLoading(false);
     }
@@ -85,7 +87,7 @@ export default function PlayerAvailableTournaments() {
             (application) =>
               String(application.tournament?._id) === String(tournament._id) &&
               application.categoryCode === category.code &&
-              isActiveApplication(application)
+              hasApplication(application)
           )
       ) || null;
     setSelectedCategory(initialCategory);
@@ -110,8 +112,17 @@ export default function PlayerAvailableTournaments() {
       return;
     }
 
-    if (!player?.fullName || !player?.email || !player?.phone || !selectedCategory) {
-      setFormError('Complete your name, email, contact number, and age category in your profile before applying.');
+    if (
+      !player?.fullName ||
+      !player?.email ||
+      String(player?.phone || '').trim().length < 6 ||
+      !player?.gender ||
+      !player?.ageGroup ||
+      !selectedCategory
+    ) {
+      setFormError(
+        'Complete your name, email, contact number, gender, and age category in your profile before applying.'
+      );
       return;
     }
 
@@ -185,6 +196,11 @@ export default function PlayerAvailableTournaments() {
           Explore and apply for sanctioned Thane District badminton championships and inter-club tournaments.
         </p>
       </div>
+      {loadError && (
+        <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm">
+          {loadError}
+        </div>
+      )}
 
       {/* Filter & Search Bar */}
       <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#E8DCC7] shadow-xs space-y-4">
@@ -267,7 +283,7 @@ export default function PlayerAvailableTournaments() {
                   (application) =>
                     String(application.tournament?._id) === String(t._id) &&
                     application.categoryCode === category.code &&
-                    isActiveApplication(application)
+                    hasApplication(application)
                 )
             );
             return (
@@ -473,7 +489,7 @@ export default function PlayerAvailableTournaments() {
                           (application) =>
                             String(application.tournament?._id) === String(selectedTournament._id) &&
                             application.categoryCode === cat.code &&
-                            isActiveApplication(application)
+                            hasApplication(application)
                         )}
                       >
                         {cat.name} ({cat.gender} • {cat.ageGroup}) — Entry: ₹{cat.fee}
@@ -481,7 +497,7 @@ export default function PlayerAvailableTournaments() {
                           (application) =>
                             String(application.tournament?._id) === String(selectedTournament._id) &&
                             application.categoryCode === cat.code &&
-                            isActiveApplication(application)
+                            hasApplication(application)
                         )
                           ? ' — Already applied'
                           : ''}

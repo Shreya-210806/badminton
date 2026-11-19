@@ -13,7 +13,7 @@ export const signup = async (req, res, next) => {
       email,
       password,
       phone = '',
-      gender = 'Male',
+      gender,
       ageGroup = 'Open',
       club = 'Independent',
       city = '',
@@ -43,8 +43,14 @@ export const signup = async (req, res, next) => {
     let player = await Player.findOne({ email: normalizedEmail });
     if (player) {
       player.user = user._id;
-      player.fullName = player.fullName || name.trim();
-      if (phone) player.phone = phone;
+      player.fullName = name.trim();
+      player.phone = phone.trim();
+      player.gender = gender;
+      player.ageGroup = ageGroup;
+      player.club = club;
+      player.city = city || player.city;
+      player.handedness = handedness;
+      player.skillLevel = skillLevel;
       await player.save();
     } else {
       player = await Player.create({

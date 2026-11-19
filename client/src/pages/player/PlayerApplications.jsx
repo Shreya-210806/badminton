@@ -25,9 +25,9 @@ export default function PlayerApplications() {
 
   const fetchApplications = async () => {
     try {
-      const res = await apiRequest('/player/dashboard');
-      if (res.success && res.registrations) {
-        setApplications(res.registrations);
+      const res = await apiRequest('/player/applications');
+      if (res.success && res.applications) {
+        setApplications(res.applications);
       }
     } catch (err) {
       console.error('Failed to load applications:', err);
@@ -68,6 +68,9 @@ export default function PlayerApplications() {
     if (!matchesSearch) return false;
 
     if (filterStatus === 'all') return true;
+    if (filterStatus === 'pending') {
+      return ['pending', 'waitlisted'].includes(app.status);
+    }
     return app.status === filterStatus;
   });
 
@@ -148,8 +151,10 @@ export default function PlayerApplications() {
                     }`}
                   >
                     {app.status === 'pending'
-                      ? 'Pending Admin Approval'
-                      : app.status}
+                        ? 'Pending'
+                        : app.status === 'waitlisted'
+                        ? 'Pending (Waitlisted)'
+                        : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
                   </span>
                   <span className="text-[11px] text-[#243044]/60">
                     Applied on: {new Date(app.createdAt).toLocaleDateString()}
@@ -195,7 +200,7 @@ export default function PlayerApplications() {
                   </div>
                 </div>
 
-                {app.status === 'pending' && (
+                {['pending', 'waitlisted'].includes(app.status) && (
                   <button
                     onClick={() => handleCancelApplication(app._id)}
                     disabled={cancellingId === app._id}

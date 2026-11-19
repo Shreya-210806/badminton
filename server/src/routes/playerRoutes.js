@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { body } from 'express-validator';
 import {
   getPlayerDashboard,
+  getPlayerProfile,
+  getPlayerApplications,
+  getPlayerTournaments,
   updatePlayerProfile,
   createRegistration,
   submitPaymentReference,
@@ -18,6 +21,9 @@ const router = Router();
 router.use(protect);
 
 router.get('/dashboard', getPlayerDashboard);
+router.get('/profile', getPlayerProfile);
+router.get('/applications', getPlayerApplications);
+router.get('/my-tournaments', getPlayerTournaments);
 router.put('/profile', updatePlayerProfile);
 router.get('/available-tournaments', getAvailableTournaments);
 router.get('/updates', getTournamentUpdates);

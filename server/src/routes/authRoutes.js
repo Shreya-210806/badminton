@@ -22,8 +22,15 @@ router.post(
       .withMessage('Password must be at least 6 characters long.'),
     body('phone')
       .trim()
-      .isLength({ min: 6 })
+      .custom((value) => value.replace(/\D/g, '').length >= 6)
       .withMessage('A valid contact number is required.'),
+    body('gender')
+      .isIn(['Male', 'Female', 'Other'])
+      .withMessage('Please select a valid gender.'),
+    body('ageGroup')
+      .optional()
+      .isIn(['U15', 'U19', 'Open', '35+', '45+'])
+      .withMessage('Please select a valid age category.'),
   ],
   validateRequest,
   signup

@@ -30,7 +30,7 @@ export default function AuthPage() {
   const [regPassword, setRegPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regPhone, setRegPhone] = useState('');
-  const [regGender, setRegGender] = useState('Male');
+  const [regGender, setRegGender] = useState('');
   const [regAgeGroup, setRegAgeGroup] = useState('Open');
   const [regClub, setRegClub] = useState('Dadoji Konddev Stadium, Thane');
 
@@ -272,10 +272,12 @@ export default function AuthPage() {
               <div>
                 <label className="block text-xs font-bold text-[#243044] mb-1">Gender</label>
                 <select
+                  required
                   value={regGender}
                   onChange={(e) => setRegGender(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-[#F5F4EF] border border-[#E8DCC7] rounded-xl text-sm text-[#243044] focus:outline-none focus:border-[#5B806B] transition-all"
                 >
+                  <option value="" disabled>Select gender</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>

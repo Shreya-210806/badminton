@@ -51,7 +51,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('sp_token', res.token);
     setUser(res.user);
     setPlayer(res.player || null);
-    notify(`Welcome back, ${res.user.name}!`, 'success');
+    notify('Welcome!', 'success');
     return res.user;
   };
 

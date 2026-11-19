@@ -22,7 +22,7 @@ export default function PlayerProfile() {
   // Form states
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [gender, setGender] = useState('Male');
+  const [gender, setGender] = useState('');
   const [ageGroup, setAgeGroup] = useState('Open');
   const [club, setClub] = useState('');
   const [city, setCity] = useState('');
@@ -44,16 +44,16 @@ export default function PlayerProfile() {
 
   const fetchProfile = async () => {
     try {
-      const res = await apiRequest('/player/dashboard');
+      const res = await apiRequest('/player/profile');
       if (res.success && res.player) {
         const p = res.player;
         setPlayer(p);
         setFullName(p.fullName || user?.name || '');
         setPhone(p.phone || '');
-        setGender(p.gender || 'Male');
+        setGender(p.gender || '');
         setAgeGroup(p.ageGroup || 'Open');
-        setClub(p.club || 'Dadoji Konddev Stadium, Thane (West)');
-        setCity(p.city || 'Thane');
+        setClub(p.club || '');
+        setCity(p.city || '');
         setHandedness(p.handedness || 'Right');
         setBio(p.bio || '');
       }
@@ -205,10 +205,12 @@ export default function PlayerProfile() {
               <div>
                 <label className="block font-bold text-[#243044] mb-1">Gender</label>
                 <select
+                  required
                   value={gender}
                   onChange={(e) => setGender(e.target.value)}
                   className="w-full p-2.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7] text-xs text-[#243044] font-semibold focus:outline-none focus:border-[#5B806B]"
                 >
+                  <option value="" disabled>Select gender</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>
@@ -252,6 +254,7 @@ export default function PlayerProfile() {
                 onChange={(e) => setClub(e.target.value)}
                 className="w-full p-2.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7] text-xs text-[#243044] font-semibold focus:outline-none focus:border-[#5B806B]"
               >
+                <option value="">Select a club</option>
                 {thaneClubs.map((c) => (
                   <option key={c} value={c}>
                     {c}

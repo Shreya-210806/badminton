@@ -27,56 +27,81 @@ const isCategoryEligible = (category, player) => {
   return genderEligible && ageEligible;
 };
 
+const hasValidContactNumber = (phone) =>
+  String(phone || '').replace(/\D/g, '').length >= 6;
+
+const getPlayerForUser = async (user) => {
+  let player = await Player.findOne({ user: user._id });
+  if (!player) {
+    player = await Player.create({
+      user: user._id,
+      playerCode: `PL-${Math.floor(100000 + Math.random() * 900000)}`,
+      fullName: user.name,
+      email: user.email,
+    });
+  } else if (player.email !== user.email) {
+    player.email = user.email;
+    await player.save();
+  }
+  return player;
+};
+
+const getPlayerRegistrations = (user, player) =>
+  Registration.find({
+    $or: [{ player: player._id }, { user: user._id }],
+  })
+    .populate('tournament', 'name slug venue city startDate endDate status')
+    .populate('partner', 'fullName email club')
+    .populate('team', 'name teamCode status')
+    .sort({ createdAt: -1 });
+
+const getPlayerMatches = async (player, approvedRegistrations) => {
+  const tournamentIds = [
+    ...new Set(approvedRegistrations.map((r) => String(r.tournament?._id || r.tournament))),
+  ];
+  const categoryCodes = [...new Set(approvedRegistrations.map((r) => r.categoryCode))];
+  const teamIds = approvedRegistrations.map((r) => r.team?._id || r.team).filter(Boolean);
+
+  if (!tournamentIds.length || !categoryCodes.length) return [];
+
+  return Match.find({
+    tournament: { $in: tournamentIds },
+    categoryCode: { $in: categoryCodes },
+    published: true,
+    $or: [
+      { 'sideA.player': player._id },
+      { 'sideB.player': player._id },
+      ...(teamIds.length
+        ? [{ 'sideA.team': { $in: teamIds } }, { 'sideB.team': { $in: teamIds } }]
+        : []),
+    ],
+  })
+    .populate('tournament', 'name slug venue city')
+    .sort({ scheduledAt: 1 });
+};
+
 export const getPlayerDashboard = async (req, res, next) => {
   try {
-    let player = await Player.findOne({ user: req.user._id });
-    if (!player) {
-      player = await Player.create({
-        user: req.user._id,
-        playerCode: `PL-${Math.floor(100000 + Math.random() * 900000)}`,
-        fullName: req.user.name,
-        email: req.user.email,
-      });
-    }
-
-    const registrations = await Registration.find({
-      $or: [{ player: player._id }, { partner: player._id }, { user: req.user._id }],
-    })
-      .populate('tournament', 'name slug venue city startDate endDate status')
-      .populate('partner', 'fullName email club')
-      .populate('team', 'name teamCode status')
-      .sort({ createdAt: -1 });
-    const approvedRegistrations = registrations.filter((r) => r.status === 'approved');
-    const approvedTournamentIds = [
-      ...new Set(approvedRegistrations.map((r) => String(r.tournament?._id || r.tournament))),
+    const player = await getPlayerForUser(req.user);
+    const registrations = await getPlayerRegistrations(req.user, player);
+    const registeredTournamentIds = [
+      ...new Set(registrations.map((r) => String(r.tournament?._id || r.tournament))),
     ];
-    const approvedCategoryCodes = [...new Set(approvedRegistrations.map((r) => r.categoryCode))];
-    const teamIds = approvedRegistrations.map((r) => r.team?._id).filter(Boolean);
+    const approvedRegistrations = registrations.filter((r) => r.status === 'approved');
 
     const [payments, matches, notifications, rankPosition, orgSettings] = await Promise.all([
       Payment.find({ player: player._id })
         .populate('tournament', 'name slug')
         .populate('registration', 'registrationNumber categoryName')
         .sort({ createdAt: -1 }),
-      approvedTournamentIds.length
-        ? Match.find({
-            tournament: { $in: approvedTournamentIds },
-            categoryCode: { $in: approvedCategoryCodes },
-            $or: [
-              { 'sideA.player': player._id },
-              { 'sideB.player': player._id },
-              ...(teamIds.length > 0
-                ? [{ 'sideA.team': { $in: teamIds } }, { 'sideB.team': { $in: teamIds } }]
-                : []),
-            ],
-          })
-            .populate('tournament', 'name slug venue city')
-            .sort({ scheduledAt: 1 })
-        : [],
+      getPlayerMatches(player, approvedRegistrations),
       Notification.find({
         $or: [
           { audience: { $in: ['all', 'players'] } },
           { recipientUsers: req.user._id },
+          ...(registeredTournamentIds.length
+            ? [{ tournament: { $in: registeredTournamentIds } }]
+            : []),
         ],
       })
         .sort({ createdAt: -1 })
@@ -85,11 +110,16 @@ export const getPlayerDashboard = async (req, res, next) => {
       OrganizationSetting.findOne({ singletonKey: 'default' }),
     ]);
 
-    const enrichedNotifications = notifications.map((n) => {
-      const obj = n.toObject();
-      obj.isRead = (n.readBy || []).some((id) => String(id) === String(req.user._id));
-      return obj;
-    });
+    const registeredTournamentIdSet = new Set(registeredTournamentIds);
+    const enrichedNotifications = notifications
+      .filter(
+        (n) => !n.tournament || registeredTournamentIdSet.has(String(n.tournament))
+      )
+      .map((n) => {
+        const obj = n.toObject();
+        obj.isRead = (n.readBy || []).some((id) => String(id) === String(req.user._id));
+        return obj;
+      });
 
     res.json({
       success: true,
@@ -109,19 +139,82 @@ export const getPlayerDashboard = async (req, res, next) => {
   }
 };
 
+export const getPlayerProfile = async (req, res, next) => {
+  try {
+    const player = await getPlayerForUser(req.user);
+    res.json({ success: true, player });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getPlayerApplications = async (req, res, next) => {
+  try {
+    const player = await getPlayerForUser(req.user);
+    const registrations = await getPlayerRegistrations(req.user, player);
+    res.json({ success: true, applications: registrations });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getPlayerTournaments = async (req, res, next) => {
+  try {
+    const player = await getPlayerForUser(req.user);
+    const registrations = await getPlayerRegistrations(req.user, player);
+    const approvedRegistrations = registrations.filter((r) => r.status === 'approved');
+    const tournamentsById = new Map();
+
+    approvedRegistrations.forEach((registration) => {
+      if (!registration.tournament) return;
+      const tournamentId = String(registration.tournament._id);
+      if (!tournamentsById.has(tournamentId)) {
+        tournamentsById.set(tournamentId, {
+          tournament: registration.tournament,
+          entries: [],
+        });
+      }
+      tournamentsById.get(tournamentId).entries.push(registration);
+    });
+
+    const matches = await getPlayerMatches(player, approvedRegistrations);
+    res.json({
+      success: true,
+      tournaments: [...tournamentsById.values()],
+      registrations: approvedRegistrations,
+      fixtures: matches.filter((m) => ['scheduled', 'live', 'postponed'].includes(m.status)),
+      results: matches.filter((m) => ['completed', 'walkover'].includes(m.status)),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const updatePlayerProfile = async (req, res, next) => {
   try {
-    const player = await Player.findOne({ user: req.user._id });
-    if (!player) {
-      return res.status(404).json({ success: false, message: 'Player profile not found.' });
-    }
+    const player = await getPlayerForUser(req.user);
 
     const phone = req.body.phone === undefined ? player.phone : req.body.phone;
-    if (String(phone || '').trim().length < 6) {
+    if (!hasValidContactNumber(phone)) {
       return res.status(400).json({
         success: false,
         message: 'A valid contact number is required.',
       });
+    }
+
+    if (req.body.gender !== undefined && !['Male', 'Female', 'Other'].includes(req.body.gender)) {
+      return res.status(400).json({ success: false, message: 'Select a valid gender.' });
+    }
+
+    if (
+      req.body.ageGroup !== undefined &&
+      !['U15', 'U19', 'Open', '35+', '45+'].includes(req.body.ageGroup)
+    ) {
+      return res.status(400).json({ success: false, message: 'Select a valid age category.' });
+    }
+
+    if (req.body.fullName !== undefined && String(req.body.fullName).trim().length < 2) {
+      return res.status(400).json({ success: false, message: 'Enter a valid full name.' });
     }
 
     const allowedFields = [
@@ -232,24 +325,18 @@ export const createRegistration = async (req, res, next) => {
       });
     }
 
-    let player = await Player.findOne({ user: req.user._id });
-    if (!player) {
-      player = await Player.create({
-        user: req.user._id,
-        playerCode: `PL-${Math.floor(100000 + Math.random() * 900000)}`,
-        fullName: req.user.name,
-        email: req.user.email,
-      });
-    }
+    const player = await getPlayerForUser(req.user);
 
     if (
       !String(player.fullName || '').trim() ||
       !String(player.email || '').trim() ||
-      String(player.phone || '').trim().length < 6
+      !hasValidContactNumber(player.phone) ||
+      !['Male', 'Female', 'Other'].includes(player.gender)
     ) {
       return res.status(400).json({
         success: false,
-        message: 'Complete your name, email, and contact number in your player profile before applying.',
+        message:
+          'Complete your name, email, contact number, gender, and age category in your player profile before applying.',
       });
     }
 
@@ -267,18 +354,17 @@ export const createRegistration = async (req, res, next) => {
       });
     }
 
-    // Prevent duplicate active registration by this player in the same tournament + category
+    // Keep an application unique for a player, even if an earlier application was closed.
     const duplicate = await Registration.findOne({
       tournament: tournament._id,
       categoryCode,
-      status: { $nin: ['rejected', 'cancelled'] },
-      $or: [{ player: player._id }, { partner: player._id }],
+      $or: [{ user: req.user._id }, { player: player._id }],
     });
 
     if (duplicate) {
       return res.status(409).json({
         success: false,
-        message: `You already have an active registration (${duplicate.registrationNumber}) in ${category.name}.`,
+        message: `You already have an application (${duplicate.registrationNumber}) in ${category.name}.`,
       });
     }
 
@@ -585,24 +671,32 @@ export const cancelRegistration = async (req, res, next) => {
 
 export const getTournamentUpdates = async (req, res, next) => {
   try {
-    const player = await Player.findOne({ user: req.user._id });
-    const playerRegistrations = await Registration.find({
-      $or: [
-        { user: req.user._id },
-        ...(player ? [{ player: player._id }, { partner: player._id }] : []),
-      ],
-      status: { $in: ['approved', 'pending', 'waitlisted'] },
-    }).select('tournament');
+    const player = await getPlayerForUser(req.user);
+    const registrations = await getPlayerRegistrations(req.user, player);
+    const playerRegistrations = registrations.filter((registration) =>
+      ['approved', 'pending', 'waitlisted'].includes(registration.status)
+    );
 
-    const tournamentIds = [...new Set(playerRegistrations.map((r) => String(r.tournament)))];
+    const tournamentIds = [
+      ...new Set(playerRegistrations.map((r) => String(r.tournament?._id || r.tournament))),
+    ];
 
-    const updates = await TournamentUpdate.find({
-      tournament: { $in: tournamentIds },
-    })
-      .populate('tournament', 'name venue city startDate endDate')
-      .sort({ isPinned: -1, createdAt: -1 });
+    const approvedRegistrations = registrations.filter((r) => r.status === 'approved');
+    const [updates, matches] = await Promise.all([
+      tournamentIds.length
+        ? TournamentUpdate.find({ tournament: { $in: tournamentIds } })
+            .populate('tournament', 'name venue city startDate endDate')
+            .sort({ isPinned: -1, createdAt: -1 })
+        : [],
+      getPlayerMatches(player, approvedRegistrations),
+    ]);
 
-    res.json({ success: true, updates });
+    res.json({
+      success: true,
+      updates,
+      fixtures: matches.filter((m) => ['scheduled', 'live', 'postponed'].includes(m.status)),
+      results: matches.filter((m) => ['completed', 'walkover'].includes(m.status)),
+    });
   } catch (err) {
     next(err);
   }
@@ -610,11 +704,20 @@ export const getTournamentUpdates = async (req, res, next) => {
 
 export const getAvailableTournaments = async (req, res, next) => {
   try {
+    const player = await getPlayerForUser(req.user);
     const tournaments = await Tournament.find({
       status: { $in: ['published', 'ongoing'] },
     }).sort({ startDate: 1 });
+    const eligibleTournaments = tournaments
+      .map((tournament) => ({
+        ...tournament.toObject(),
+        categories: (tournament.categories || []).filter((category) =>
+          isCategoryEligible(category, player)
+        ),
+      }))
+      .filter((tournament) => tournament.categories.length > 0);
 
-    res.json({ success: true, tournaments });
+    res.json({ success: true, tournaments: eligibleTournaments });
   } catch (err) {
     next(err);
   }
