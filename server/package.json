@@ -1,0 +1,30 @@
+{
+  "name": "shuttlepulse-server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/seed/seedData.js",
+    "dev:local-db": "node scripts/local-dynamo.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1170.0",
+    "@aws-sdk/client-s3": "^3.1171.0",
+    "@aws-sdk/client-sesv2": "^3.1171.0",
+    "@aws-sdk/client-ssm": "^3.1171.0",
+    "@aws-sdk/lib-dynamodb": "^3.1170.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "express-validator": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.5.0"
+  },
+  "devDependencies": {
+    "dynalite": "^3.2.2"
+  }
+}
