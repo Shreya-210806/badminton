@@ -27,6 +27,56 @@ const isCategoryEligible = (category, player) => {
   return genderEligible && ageEligible;
 };
 
+const locationAliases = [
+  { location: 'ambernath', aliases: ['ambernath'] },
+  { location: 'badlapur', aliases: ['badlapur'] },
+  { location: 'bhiwandi', aliases: ['bhiwandi'] },
+  { location: 'dombivli', aliases: ['dombivli'] },
+  { location: 'kalwa', aliases: ['kalwa'] },
+  { location: 'kalyan', aliases: ['kalyan'] },
+  { location: 'mumbra', aliases: ['mumbra'] },
+  { location: 'thane', aliases: ['thane'] },
+];
+
+const normalizeLocation = (value) =>
+  ` ${String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+
+const findKnownLocations = (value) => {
+  const normalized = normalizeLocation(value);
+  return locationAliases
+    .filter(({ aliases }) =>
+      aliases.some((alias) => normalized.includes(` ${alias} `))
+    )
+    .map(({ location }) => location);
+};
+
+const getPlayerLocations = (player) => {
+  const clubLocations = findKnownLocations(player.club);
+  if (clubLocations.length) return clubLocations;
+
+  const cityLocations = findKnownLocations(player.city);
+  if (cityLocations.length) return cityLocations;
+
+  const city = normalizeLocation(player.city).trim();
+  if (city) return [city];
+
+  const club = normalizeLocation(player.club)
+    .replace(/\b(badminton|club|stadium|academy|wing|sports|complex|gymkhana|independent|other|district|thane)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return club ? [club] : [];
+};
+
+const isTournamentLocationEligible = (tournament, player) => {
+  const locations = getPlayerLocations(player);
+  if (!locations.length) return true;
+
+  const tournamentLocation = normalizeLocation(
+    [tournament.city, tournament.venue, tournament.address].filter(Boolean).join(' ')
+  );
+  return locations.some((location) => tournamentLocation.includes(` ${location} `));
+};
+
 const hasValidContactNumber = (phone) =>
   String(phone || '').replace(/\D/g, '').length >= 6;
 
@@ -50,10 +100,23 @@ const getPlayerRegistrations = (user, player) =>
   Registration.find({
     $or: [{ player: player._id }, { user: user._id }],
   })
-    .populate('tournament', 'name slug venue city startDate endDate status')
+    .populate('tournament', 'name slug venue city address startDate endDate status categories')
     .populate('partner', 'fullName email club')
     .populate('team', 'name teamCode status')
     .sort({ createdAt: -1 });
+
+const getEligibleRegistrations = (registrations, player) =>
+  registrations.filter((registration) => {
+    const category = registration.tournament?.categories?.find(
+      (item) => item.code === registration.categoryCode
+    );
+    return (
+      registration.tournament &&
+      isTournamentLocationEligible(registration.tournament, player) &&
+      category &&
+      isCategoryEligible(category, player)
+    );
+  });
 
 const getPlayerMatches = async (player, approvedRegistrations) => {
   const tournamentIds = [
@@ -83,7 +146,10 @@ const getPlayerMatches = async (player, approvedRegistrations) => {
 export const getPlayerDashboard = async (req, res, next) => {
   try {
     const player = await getPlayerForUser(req.user);
-    const registrations = await getPlayerRegistrations(req.user, player);
+    const registrations = getEligibleRegistrations(
+      await getPlayerRegistrations(req.user, player),
+      player
+    );
     const registeredTournamentIds = [
       ...new Set(registrations.map((r) => String(r.tournament?._id || r.tournament))),
     ];
@@ -151,7 +217,10 @@ export const getPlayerProfile = async (req, res, next) => {
 export const getPlayerApplications = async (req, res, next) => {
   try {
     const player = await getPlayerForUser(req.user);
-    const registrations = await getPlayerRegistrations(req.user, player);
+    const registrations = getEligibleRegistrations(
+      await getPlayerRegistrations(req.user, player),
+      player
+    );
     res.json({ success: true, applications: registrations });
   } catch (err) {
     next(err);
@@ -161,7 +230,10 @@ export const getPlayerApplications = async (req, res, next) => {
 export const getPlayerTournaments = async (req, res, next) => {
   try {
     const player = await getPlayerForUser(req.user);
-    const registrations = await getPlayerRegistrations(req.user, player);
+    const registrations = getEligibleRegistrations(
+      await getPlayerRegistrations(req.user, player),
+      player
+    );
     const approvedRegistrations = registrations.filter((r) => r.status === 'approved');
     const tournamentsById = new Map();
 
@@ -340,10 +412,10 @@ export const createRegistration = async (req, res, next) => {
       });
     }
 
-    if (!isCategoryEligible(category, player)) {
+    if (!isCategoryEligible(category, player) || !isTournamentLocationEligible(tournament, player)) {
       return res.status(400).json({
         success: false,
-        message: `Your profile does not meet the gender or age eligibility for ${category.name}.`,
+        message: `Your profile does not meet the location, gender, or age eligibility for ${category.name}.`,
       });
     }
 
@@ -672,7 +744,10 @@ export const cancelRegistration = async (req, res, next) => {
 export const getTournamentUpdates = async (req, res, next) => {
   try {
     const player = await getPlayerForUser(req.user);
-    const registrations = await getPlayerRegistrations(req.user, player);
+    const registrations = getEligibleRegistrations(
+      await getPlayerRegistrations(req.user, player),
+      player
+    );
     const playerRegistrations = registrations.filter((registration) =>
       ['approved', 'pending', 'waitlisted'].includes(registration.status)
     );
@@ -715,6 +790,7 @@ export const getAvailableTournaments = async (req, res, next) => {
           isCategoryEligible(category, player)
         ),
       }))
+      .filter((tournament) => isTournamentLocationEligible(tournament, player))
       .filter((tournament) => tournament.categories.length > 0);
 
     res.json({ success: true, tournaments: eligibleTournaments });

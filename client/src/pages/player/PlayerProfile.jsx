@@ -255,6 +255,9 @@ export default function PlayerProfile() {
                 className="w-full p-2.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7] text-xs text-[#243044] font-semibold focus:outline-none focus:border-[#5B806B]"
               >
                 <option value="">Select a club</option>
+                {club && !thaneClubs.includes(club) && (
+                  <option value={club}>{club}</option>
+                )}
                 {thaneClubs.map((c) => (
                   <option key={c} value={c}>
                     {c}
