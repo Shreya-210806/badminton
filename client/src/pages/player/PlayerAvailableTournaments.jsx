@@ -19,10 +19,20 @@ const isCategoryEligible = (category, player) => {
     category.gender === 'Any' ||
     category.gender === player?.gender ||
     (category.gender === 'Mixed' && ['Male', 'Female'].includes(player?.gender));
+  const age = Number(player?.age);
+  const ageGroups =
+    age < 15
+      ? ['U15', 'U19', 'Open']
+      : age < 19
+      ? ['U19', 'Open']
+      : age < 35
+      ? ['Open']
+      : age < 45
+      ? ['35+', 'Open']
+      : ['35+', '45+', 'Open'];
   const ageEligible =
     !category.ageGroup ||
-    category.ageGroup === 'Open' ||
-    category.ageGroup === player?.ageGroup;
+    (Number.isInteger(age) && ageGroups.includes(category.ageGroup));
 
   return genderEligible && ageEligible;
 };
@@ -33,6 +43,7 @@ export default function PlayerAvailableTournaments() {
   const { notify } = useAuth();
   const [tournaments, setTournaments] = useState([]);
   const [player, setPlayer] = useState(null);
+  const [selectedLocation, setSelectedLocation] = useState(null);
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -57,6 +68,7 @@ export default function PlayerAvailableTournaments() {
         apiRequest('/player/applications'),
       ]);
       setPlayer(profileRes.player);
+      setSelectedLocation(tournamentRes.selectedLocation || null);
       if (tournamentRes.success) {
         setTournaments(tournamentRes.tournaments);
       }
@@ -117,11 +129,11 @@ export default function PlayerAvailableTournaments() {
       !player?.email ||
       String(player?.phone || '').trim().length < 6 ||
       !player?.gender ||
-      !player?.ageGroup ||
+      !Number.isInteger(Number(player?.age)) ||
       !selectedCategory
     ) {
       setFormError(
-        'Complete your name, email, contact number, gender, and age category in your profile before applying.'
+        'Complete your name, email, contact number, gender, and age in your profile before applying.'
       );
       return;
     }
@@ -193,9 +205,14 @@ export default function PlayerAvailableTournaments() {
           Available Tournaments
         </h1>
         <p className="text-xs sm:text-sm text-[#243044]/70 mt-1">
-          Explore and apply for sanctioned Thane District badminton championships and inter-club tournaments.
+          Explore eligible events across Kalwa, Thane, Mumbra, and Ambernath. Events near your selected stadium are shown first.
         </p>
       </div>
+      {selectedLocation && (
+        <p className="text-xs font-semibold text-[#5B806B]">
+          Selected stadium location: {selectedLocation}
+        </p>
+      )}
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm">
           {loadError}
@@ -208,7 +225,7 @@ export default function PlayerAvailableTournaments() {
           <Search className="w-4 h-4 text-[#C5A98D] absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search tournament name, stadium, or venue in Thane..."
+            placeholder="Search tournament name, stadium, or venue..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-[#F5F4EF] hover:bg-white focus:bg-white border border-[#E8DCC7] rounded-xl text-sm text-[#243044] placeholder-[#243044]/50 focus:outline-none focus:border-[#5B806B] transition-all"
@@ -333,6 +350,12 @@ export default function PlayerAvailableTournaments() {
                       <MapPin className="w-3.5 h-3.5 text-[#5B806B] shrink-0" />
                       <span className="truncate">{t.venue}, {t.city}</span>
                     </div>
+                    <div className="text-[11px] text-[#243044]/60">
+                      <span className="font-bold text-[#5B806B]">
+                        {t.location === selectedLocation ? 'Selected stadium area' : 'Tournament area'}:
+                      </span>{' '}
+                      {t.location}
+                    </div>
                     <div className="flex items-center gap-2 text-[11px] text-[#243044]/60">
                       <Users className="w-3.5 h-3.5 text-[#C5A98D] shrink-0" />
                       <span>
@@ -455,7 +478,7 @@ export default function PlayerAvailableTournaments() {
                     <div>Email: <span className="font-semibold text-[#243044]">{player?.email}</span></div>
                     <div>Contact: <span className="font-semibold text-[#243044]">{player?.phone}</span></div>
                     <div>Gender: <span className="font-semibold text-[#243044]">{player?.gender}</span></div>
-                    <div>Age category: <span className="font-semibold text-[#243044]">{player?.ageGroup}</span></div>
+                    <div>Age: <span className="font-semibold text-[#243044]">{player?.age ?? 'Not provided'}</span></div>
                     <div>Club: <span className="font-semibold text-[#243044]">{player?.club || 'Not provided'}</span></div>
                     <div>City: <span className="font-semibold text-[#243044]">{player?.city || 'Not provided'}</span></div>
                     <div>Playing hand: <span className="font-semibold text-[#243044]">{player?.handedness || 'Not provided'}</span></div>

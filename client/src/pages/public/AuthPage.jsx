@@ -31,7 +31,7 @@ export default function AuthPage() {
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regPhone, setRegPhone] = useState('');
   const [regGender, setRegGender] = useState('');
-  const [regAgeGroup, setRegAgeGroup] = useState('Open');
+  const [regAge, setRegAge] = useState('');
   const [regClub, setRegClub] = useState('Dadoji Konddev Stadium, Thane');
 
   const thaneClubsList = [
@@ -81,7 +81,7 @@ export default function AuthPage() {
         password: regPassword,
         phone: regPhone,
         gender: regGender,
-        ageGroup: regAgeGroup,
+        age: Number(regAge),
         club: regClub || 'Dadoji Konddev Stadium, Thane',
         skillLevel: 'Intermediate',
       });
@@ -285,18 +285,18 @@ export default function AuthPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-[#243044] mb-1">Age Category</label>
-                <select
-                  value={regAgeGroup}
-                  onChange={(e) => setRegAgeGroup(e.target.value)}
+                <label className="block text-xs font-bold text-[#243044] mb-1">Age</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max="120"
+                  step="1"
+                  value={regAge}
+                  onChange={(e) => setRegAge(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-[#F5F4EF] border border-[#E8DCC7] rounded-xl text-sm text-[#243044] focus:outline-none focus:border-[#5B806B] transition-all"
-                >
-                  <option value="U15">Under-15</option>
-                  <option value="U19">Under-19</option>
-                  <option value="Open">Open</option>
-                  <option value="35+">35+</option>
-                  <option value="45+">45+</option>
-                </select>
+                  placeholder="Enter your age"
+                />
               </div>
 
               <div>

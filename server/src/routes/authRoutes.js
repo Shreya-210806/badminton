@@ -27,10 +27,7 @@ router.post(
     body('gender')
       .isIn(['Male', 'Female', 'Other'])
       .withMessage('Please select a valid gender.'),
-    body('ageGroup')
-      .optional()
-      .isIn(['U15', 'U19', 'Open', '35+', '45+'])
-      .withMessage('Please select a valid age category.'),
+    body('age').isInt({ min: 1, max: 120 }).withMessage('Enter an age between 1 and 120.'),
   ],
   validateRequest,
   signup

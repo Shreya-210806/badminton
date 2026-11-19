@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { sendEmail } from '../utils/mailer.js';
 import { User, Player, Notification } from '../models/index.js';
 import { signToken } from '../middleware/auth.js';
+import { ageGroupForAge } from '../utils/playerEligibility.js';
 
 const generatePlayerCode = () =>
   `PL-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -14,7 +15,7 @@ export const signup = async (req, res, next) => {
       password,
       phone = '',
       gender,
-      ageGroup = 'Open',
+      age,
       club = 'Independent',
       city = '',
       handedness = 'Right',
@@ -46,7 +47,8 @@ export const signup = async (req, res, next) => {
       player.fullName = name.trim();
       player.phone = phone.trim();
       player.gender = gender;
-      player.ageGroup = ageGroup;
+      player.age = Number(age);
+      player.ageGroup = ageGroupForAge(player.age);
       player.club = club;
       player.city = city || player.city;
       player.handedness = handedness;
@@ -60,7 +62,8 @@ export const signup = async (req, res, next) => {
         email: normalizedEmail,
         phone,
         gender,
-        ageGroup,
+        age: Number(age),
+        ageGroup: ageGroupForAge(age),
         club,
         city,
         handedness,

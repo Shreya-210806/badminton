@@ -23,7 +23,7 @@ export default function PlayerProfile() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState('');
-  const [ageGroup, setAgeGroup] = useState('Open');
+  const [age, setAge] = useState('');
   const [club, setClub] = useState('');
   const [city, setCity] = useState('');
   const [handedness, setHandedness] = useState('Right');
@@ -51,7 +51,7 @@ export default function PlayerProfile() {
         setFullName(p.fullName || user?.name || '');
         setPhone(p.phone || '');
         setGender(p.gender || '');
-        setAgeGroup(p.ageGroup || 'Open');
+        setAge(p.age === undefined || p.age === null ? '' : String(p.age));
         setClub(p.club || '');
         setCity(p.city || '');
         setHandedness(p.handedness || 'Right');
@@ -78,7 +78,7 @@ export default function PlayerProfile() {
           fullName,
           phone,
           gender,
-          ageGroup,
+          age: Number(age),
           club,
           city,
           handedness,
@@ -218,18 +218,18 @@ export default function PlayerProfile() {
               </div>
 
               <div>
-                <label className="block font-bold text-[#243044] mb-1">Age Category</label>
-                <select
-                  value={ageGroup}
-                  onChange={(e) => setAgeGroup(e.target.value)}
+                <label className="block font-bold text-[#243044] mb-1">Age</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max="120"
+                  step="1"
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
                   className="w-full p-2.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7] text-xs text-[#243044] font-semibold focus:outline-none focus:border-[#5B806B]"
-                >
-                  <option value="U15">Under-15</option>
-                  <option value="U19">Under-19</option>
-                  <option value="Open">Open (Senior)</option>
-                  <option value="35+">Masters 35+</option>
-                  <option value="45+">Veterans 45+</option>
-                </select>
+                  placeholder="Enter your age"
+                />
               </div>
 
               <div>
