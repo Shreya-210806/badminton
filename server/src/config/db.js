@@ -10,12 +10,14 @@ export const getDbInfo = () => state;
 export const connectDB = async () => {
   const region = process.env.AWS_REGION || 'ap-south-1';
   const endpoint = process.env.DYNAMODB_ENDPOINT || null;
-  if (process.env.DYNAMODB_AUTO_CREATE_TABLES !== 'false') {
-    await ensureTables(modelNames());
-  }
+  const createMissingTables =
+    process.env.DYNAMODB_AUTO_CREATE_TABLES === 'true' ||
+    (process.env.DYNAMODB_AUTO_CREATE_TABLES !== 'false' &&
+      process.env.NODE_ENV !== 'production');
+  await ensureTables(modelNames(), { createMissing: createMissingTables });
   state = { connected: true, mode: endpoint ? 'dynamodb-local' : 'dynamodb', region, endpoint };
   console.log(`[DB] DynamoDB ready (${state.mode}, region ${region})`);
-  if (process.env.SEED_ON_STARTUP !== 'false') {
+  if (process.env.NODE_ENV !== 'production' && process.env.SEED_ON_STARTUP !== 'false') {
     await seedDatabase({ force: false });
   }
   return state;

@@ -22,7 +22,7 @@ export function getClients() {
   return { rawClient, docClient };
 }
 
-export async function ensureTables(modelNames) {
+export async function ensureTables(modelNames, { createMissing = true } = {}) {
   const { rawClient: client } = getClients();
   const existing = new Set();
   let start;
@@ -35,6 +35,11 @@ export async function ensureTables(modelNames) {
   for (const model of modelNames) {
     const name = tableName(model);
     if (existing.has(name)) continue;
+    if (!createMissing) {
+      throw new Error(
+        `Required DynamoDB table ${name} does not exist. Create it only after approval, or correct DYNAMODB_TABLE_PREFIX.`
+      );
+    }
     await client.send(
       new CreateTableCommand({
         TableName: name,
