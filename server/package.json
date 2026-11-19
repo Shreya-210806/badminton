@@ -10,6 +10,7 @@
     "dev:local-db": "node scripts/local-dynamo.js"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.1172.0",
     "@aws-sdk/client-dynamodb": "^3.1170.0",
     "@aws-sdk/client-s3": "^3.1171.0",
     "@aws-sdk/client-sesv2": "^3.1171.0",
