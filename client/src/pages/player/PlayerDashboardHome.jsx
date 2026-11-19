@@ -14,11 +14,9 @@ import {
   Sparkles,
   Shield,
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../api/client';
 
 export default function PlayerDashboardHome() {
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({
     player: null,
@@ -74,7 +72,7 @@ export default function PlayerDashboardHome() {
               <span>Thane District Player Portal</span>
             </div>
             <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#243044]">
-              Welcome back, <span className="text-[#5B806B]">{user?.name || player?.fullName}</span>!
+              Welcome!
             </h1>
             <p className="text-xs sm:text-sm text-[#243044]/70 max-w-2xl leading-relaxed">
               Track your tournament applications, upcoming match schedules, referee updates, and Thane District standing points.

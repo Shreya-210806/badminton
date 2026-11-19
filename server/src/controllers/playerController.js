@@ -13,6 +13,20 @@ import {
 const nextCode = (prefix) =>
   `${prefix}-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
 
+const isCategoryEligible = (category, player) => {
+  const genderEligible =
+    !category.gender ||
+    category.gender === 'Any' ||
+    category.gender === player.gender ||
+    (category.gender === 'Mixed' && ['Male', 'Female'].includes(player.gender));
+  const ageEligible =
+    !category.ageGroup ||
+    category.ageGroup === 'Open' ||
+    category.ageGroup === player.ageGroup;
+
+  return genderEligible && ageEligible;
+};
+
 export const getPlayerDashboard = async (req, res, next) => {
   try {
     let player = await Player.findOne({ user: req.user._id });
@@ -25,46 +39,51 @@ export const getPlayerDashboard = async (req, res, next) => {
       });
     }
 
-    const teams = await Team.find({
-      $or: [{ player1: player._id }, { player2: player._id }],
-    });
-    const teamIds = teams.map((t) => t._id);
+    const registrations = await Registration.find({
+      $or: [{ player: player._id }, { partner: player._id }, { user: req.user._id }],
+    })
+      .populate('tournament', 'name slug venue city startDate endDate status')
+      .populate('partner', 'fullName email club')
+      .populate('team', 'name teamCode status')
+      .sort({ createdAt: -1 });
+    const approvedRegistrations = registrations.filter((r) => r.status === 'approved');
+    const approvedTournamentIds = [
+      ...new Set(approvedRegistrations.map((r) => String(r.tournament?._id || r.tournament))),
+    ];
+    const approvedCategoryCodes = [...new Set(approvedRegistrations.map((r) => r.categoryCode))];
+    const teamIds = approvedRegistrations.map((r) => r.team?._id).filter(Boolean);
 
-    const [registrations, payments, matches, notifications, rankPosition, orgSettings] =
-      await Promise.all([
-        Registration.find({
-          $or: [{ player: player._id }, { partner: player._id }, { user: req.user._id }],
-        })
-          .populate('tournament', 'name slug venue city startDate endDate status')
-          .populate('partner', 'fullName email club')
-          .populate('team', 'name teamCode status')
-          .sort({ createdAt: -1 }),
-        Payment.find({ player: player._id })
-          .populate('tournament', 'name slug')
-          .populate('registration', 'registrationNumber categoryName')
-          .sort({ createdAt: -1 }),
-        Match.find({
-          $or: [
-            { 'sideA.player': player._id },
-            { 'sideB.player': player._id },
-            ...(teamIds.length > 0
-              ? [{ 'sideA.team': { $in: teamIds } }, { 'sideB.team': { $in: teamIds } }]
-              : []),
-          ],
-        })
-          .populate('tournament', 'name slug venue city')
-          .sort({ scheduledAt: 1 }),
-        Notification.find({
-          $or: [
-            { audience: { $in: ['all', 'players'] } },
-            { recipientUsers: req.user._id },
-          ],
-        })
-          .sort({ createdAt: -1 })
-          .limit(20),
-        Player.countDocuments({ rankingPoints: { $gt: player.rankingPoints } }),
-        OrganizationSetting.findOne({ singletonKey: 'default' }),
-      ]);
+    const [payments, matches, notifications, rankPosition, orgSettings] = await Promise.all([
+      Payment.find({ player: player._id })
+        .populate('tournament', 'name slug')
+        .populate('registration', 'registrationNumber categoryName')
+        .sort({ createdAt: -1 }),
+      approvedTournamentIds.length
+        ? Match.find({
+            tournament: { $in: approvedTournamentIds },
+            categoryCode: { $in: approvedCategoryCodes },
+            $or: [
+              { 'sideA.player': player._id },
+              { 'sideB.player': player._id },
+              ...(teamIds.length > 0
+                ? [{ 'sideA.team': { $in: teamIds } }, { 'sideB.team': { $in: teamIds } }]
+                : []),
+            ],
+          })
+            .populate('tournament', 'name slug venue city')
+            .sort({ scheduledAt: 1 })
+        : [],
+      Notification.find({
+        $or: [
+          { audience: { $in: ['all', 'players'] } },
+          { recipientUsers: req.user._id },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .limit(20),
+      Player.countDocuments({ rankingPoints: { $gt: player.rankingPoints } }),
+      OrganizationSetting.findOne({ singletonKey: 'default' }),
+    ]);
 
     const enrichedNotifications = notifications.map((n) => {
       const obj = n.toObject();
@@ -78,7 +97,9 @@ export const getPlayerDashboard = async (req, res, next) => {
       standingRank: rankPosition + 1,
       registrations,
       payments,
-      fixtures: matches.filter((m) => m.status === 'scheduled' || m.status === 'live'),
+      fixtures: matches.filter((m) =>
+        ['scheduled', 'live', 'postponed'].includes(m.status)
+      ),
       results: matches.filter((m) => m.status === 'completed' || m.status === 'walkover'),
       notifications: enrichedNotifications,
       paymentInstructions: orgSettings?.paymentInstructions || '',
@@ -93,6 +114,14 @@ export const updatePlayerProfile = async (req, res, next) => {
     const player = await Player.findOne({ user: req.user._id });
     if (!player) {
       return res.status(404).json({ success: false, message: 'Player profile not found.' });
+    }
+
+    const phone = req.body.phone === undefined ? player.phone : req.body.phone;
+    if (String(phone || '').trim().length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid contact number is required.',
+      });
     }
 
     const allowedFields = [
@@ -157,6 +186,7 @@ export const createRegistration = async (req, res, next) => {
     const {
       tournamentId,
       categoryCode,
+      eligibilityConfirmed,
       partnerDetails = {},
       emergencyContact = {},
       shirtSize = 'M',
@@ -170,6 +200,13 @@ export const createRegistration = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: 'Tournament is not available for registration.',
+      });
+    }
+
+    if (!['published', 'ongoing'].includes(tournament.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This tournament is not accepting applications.',
       });
     }
 
@@ -205,16 +242,28 @@ export const createRegistration = async (req, res, next) => {
       });
     }
 
-    // Validate gender eligibility for Singles Men/Women categories
     if (
-      category.format === 'singles' &&
-      (category.gender === 'Male' || category.gender === 'Female') &&
-      player.gender !== 'Other' &&
-      player.gender !== category.gender
+      !String(player.fullName || '').trim() ||
+      !String(player.email || '').trim() ||
+      String(player.phone || '').trim().length < 6
     ) {
       return res.status(400).json({
         success: false,
-        message: `Category "${category.name}" requires ${category.gender} players (your profile is set to ${player.gender}).`,
+        message: 'Complete your name, email, and contact number in your player profile before applying.',
+      });
+    }
+
+    if (!isCategoryEligible(category, player)) {
+      return res.status(400).json({
+        success: false,
+        message: `Your profile does not meet the gender or age eligibility for ${category.name}.`,
+      });
+    }
+
+    if (eligibilityConfirmed !== true) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please confirm your eligibility before applying.',
       });
     }
 
@@ -237,26 +286,25 @@ export const createRegistration = async (req, res, next) => {
     let createdTeam = null;
 
     if (category.format === 'doubles') {
-      const partnerName = (partnerDetails.name || '').trim();
-      const partnerEmail = (partnerDetails.email || '').toLowerCase().trim();
+      const partnerName = String(partnerDetails.name || '').trim();
+      const partnerEmail = String(partnerDetails.email || '').toLowerCase().trim();
 
-      if (!partnerName || !partnerEmail) {
+      if (Boolean(partnerName) !== Boolean(partnerEmail)) {
         return res.status(400).json({
           success: false,
-          message: 'Doubles registration requires both partner full name and partner email.',
+          message: 'Provide both partner name and email, or leave both blank to apply without a partner.',
         });
       }
 
-      if (partnerEmail === player.email.toLowerCase()) {
+      if (partnerEmail && partnerEmail === player.email.toLowerCase()) {
         return res.status(400).json({
           success: false,
           message: 'You cannot register yourself as your own doubles partner.',
         });
       }
 
-      partnerDoc = await Player.findOne({ email: partnerEmail });
+      if (partnerEmail) partnerDoc = await Player.findOne({ email: partnerEmail });
 
-      // Validate mixed doubles gender pairing if partner exists or gender is specified
       const partnerGender = partnerDoc?.gender || partnerDetails.gender || '';
       if (
         category.gender === 'Mixed' &&
@@ -284,21 +332,23 @@ export const createRegistration = async (req, res, next) => {
       }
 
       // Prevent partner from being registered twice in the same category
-      const partnerConflict = await Registration.findOne({
-        tournament: tournament._id,
-        categoryCode,
-        status: { $nin: ['rejected', 'cancelled'] },
-        $or: [
-          ...(partnerDoc ? [{ player: partnerDoc._id }, { partner: partnerDoc._id }] : []),
-          { 'partnerDetails.email': partnerEmail },
-        ],
-      });
-
-      if (partnerConflict) {
-        return res.status(409).json({
-          success: false,
-          message: `Partner (${partnerName}) is already entered in ${category.name} for this tournament.`,
+      if (partnerEmail) {
+        const partnerConflict = await Registration.findOne({
+          tournament: tournament._id,
+          categoryCode,
+          status: { $nin: ['rejected', 'cancelled'] },
+          $or: [
+            ...(partnerDoc ? [{ player: partnerDoc._id }, { partner: partnerDoc._id }] : []),
+            { 'partnerDetails.email': partnerEmail },
+          ],
         });
+
+        if (partnerConflict) {
+          return res.status(409).json({
+            success: false,
+            message: `Partner (${partnerName}) is already entered in ${category.name} for this tournament.`,
+          });
+        }
       }
     }
 
@@ -314,10 +364,10 @@ export const createRegistration = async (req, res, next) => {
       activeCategoryEntries >= category.maxEntries;
 
     if (category.format === 'doubles') {
-      const partnerName = partnerDetails.name.trim();
+      const partnerName = String(partnerDetails.name || '').trim();
       createdTeam = await Team.create({
         teamCode: nextCode('TM'),
-        name: `${player.fullName} / ${partnerName}`,
+        name: `${player.fullName} / ${partnerName || 'Partner pending'}`,
         tournament: tournament._id,
         categoryCode,
         categoryName: category.name,
@@ -325,7 +375,7 @@ export const createRegistration = async (req, res, next) => {
         player2: partnerDoc ? partnerDoc._id : null,
         partnerDetails: {
           name: partnerName,
-          email: partnerDetails.email.toLowerCase().trim(),
+          email: String(partnerDetails.email || '').toLowerCase().trim(),
           phone: partnerDetails.phone || '',
           club: partnerDetails.club || '',
         },
@@ -333,17 +383,12 @@ export const createRegistration = async (req, res, next) => {
       });
     }
 
-    // Save emergency contact on player profile if missing
-    if (!player.emergencyContact?.name && emergencyContact.name) {
-      player.emergencyContact = {
-        name: emergencyContact.name,
-        relation: emergencyContact.relation || 'Family',
-        phone: emergencyContact.phone,
-      };
-      await player.save();
-    }
-
     const hasPaymentRef = Boolean(paymentReference && paymentReference.trim());
+    const applicationEmergencyContact = {
+      name: String(emergencyContact.name || player.emergencyContact?.name || '').trim(),
+      relation: String(emergencyContact.relation || player.emergencyContact?.relation || 'Family').trim(),
+      phone: String(emergencyContact.phone || player.emergencyContact?.phone || '').trim(),
+    };
     const registration = await Registration.create({
       registrationNumber: nextCode('REG'),
       tournament: tournament._id,
@@ -356,8 +401,8 @@ export const createRegistration = async (req, res, next) => {
       partnerDetails:
         category.format === 'doubles'
           ? {
-              name: partnerDetails.name.trim(),
-              email: partnerDetails.email.toLowerCase().trim(),
+              name: String(partnerDetails.name || '').trim(),
+              email: String(partnerDetails.email || '').toLowerCase().trim(),
               phone: partnerDetails.phone || '',
               club: partnerDetails.club || '',
               gender: partnerDetails.gender || partnerDoc?.gender || '',
@@ -365,9 +410,7 @@ export const createRegistration = async (req, res, next) => {
           : undefined,
       team: createdTeam ? createdTeam._id : null,
       emergencyContact: {
-        name: emergencyContact.name.trim(),
-        relation: emergencyContact.relation || 'Family',
-        phone: emergencyContact.phone.trim(),
+        ...applicationEmergencyContact,
       },
       status: isWaitlisted ? 'waitlisted' : 'pending',
       paymentStatus: hasPaymentRef ? 'pending' : 'unpaid',
@@ -548,7 +591,7 @@ export const getTournamentUpdates = async (req, res, next) => {
         { user: req.user._id },
         ...(player ? [{ player: player._id }, { partner: player._id }] : []),
       ],
-      status: { $in: ['approved', 'pending'] },
+      status: { $in: ['approved', 'pending', 'waitlisted'] },
     }).select('tournament');
 
     const tournamentIds = [...new Set(playerRegistrations.map((r) => String(r.tournament)))];

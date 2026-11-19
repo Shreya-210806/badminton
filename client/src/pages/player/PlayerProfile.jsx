@@ -193,6 +193,8 @@ export default function PlayerProfile() {
                 <label className="block font-bold text-[#243044] mb-1">Phone Number</label>
                 <input
                   type="tel"
+                  required
+                  minLength={6}
                   placeholder="e.g. 9820011223"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}

@@ -29,14 +29,9 @@ router.post(
   [
     body('tournamentId').notEmpty().withMessage('Tournament selection is required.'),
     body('categoryCode').notEmpty().withMessage('Category selection is required.'),
-    body('emergencyContact.name')
-      .trim()
-      .isLength({ min: 2 })
-      .withMessage('Emergency contact name is required.'),
-    body('emergencyContact.phone')
-      .trim()
-      .isLength({ min: 6 })
-      .withMessage('Valid emergency contact phone number is required.'),
+    body('eligibilityConfirmed')
+      .custom((value) => value === true)
+      .withMessage('Please confirm your eligibility before applying.'),
   ],
   validateRequest,
   createRegistration

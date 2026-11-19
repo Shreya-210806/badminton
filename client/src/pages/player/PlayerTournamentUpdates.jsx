@@ -153,7 +153,12 @@ export default function PlayerTournamentUpdates() {
 
                       <div className="pt-2 border-t border-[#E8DCC7] flex items-center justify-between text-[11px] text-[#243044]/60">
                         <span className="truncate">{m.tournament?.name || 'Tournament'}</span>
-                        <span>{new Date(m.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>
+                          {new Date(m.scheduledAt).toLocaleString([], {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })}
+                        </span>
                       </div>
                     </div>
                   ))}

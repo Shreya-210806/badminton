@@ -5,7 +5,6 @@ import {
   Calendar,
   MapPin,
   Users,
-  Filter,
   CheckCircle2,
   X,
   AlertCircle,
@@ -14,9 +13,28 @@ import {
 import { apiRequest } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 
+const isCategoryEligible = (category, player) => {
+  const genderEligible =
+    !category.gender ||
+    category.gender === 'Any' ||
+    category.gender === player?.gender ||
+    (category.gender === 'Mixed' && ['Male', 'Female'].includes(player?.gender));
+  const ageEligible =
+    !category.ageGroup ||
+    category.ageGroup === 'Open' ||
+    category.ageGroup === player?.ageGroup;
+
+  return genderEligible && ageEligible;
+};
+
+const isActiveApplication = (application) =>
+  !['rejected', 'cancelled'].includes(application.status);
+
 export default function PlayerAvailableTournaments() {
-  const { user, notify } = useAuth();
+  const { notify } = useAuth();
   const [tournaments, setTournaments] = useState([]);
+  const [player, setPlayer] = useState(null);
+  const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [formatFilter, setFormatFilter] = useState('all');
@@ -29,33 +47,23 @@ export default function PlayerAvailableTournaments() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState(null);
-
-  // Form inputs
-  const [partnerDetails, setPartnerDetails] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    club: '',
-    gender: 'Male',
-  });
-  const [emergencyContact, setEmergencyContact] = useState({
-    name: '',
-    phone: '',
-    relation: 'Family',
-  });
-  const [shirtSize, setShirtSize] = useState('M');
-  const [paymentMethod, setPaymentMethod] = useState('upi');
-  const [paymentReference, setPaymentReference] = useState('');
   const [agreeRules, setAgreeRules] = useState(false);
 
   const fetchTournaments = async () => {
     try {
-      const res = await apiRequest('/player/available-tournaments');
-      if (res.success) {
-        setTournaments(res.tournaments);
+      const [tournamentRes, dashboardRes] = await Promise.all([
+        apiRequest('/player/available-tournaments'),
+        apiRequest('/player/dashboard'),
+      ]);
+      if (tournamentRes.success) {
+        setTournaments(tournamentRes.tournaments);
+      }
+      if (dashboardRes.success) {
+        setPlayer(dashboardRes.player);
+        setApplications(dashboardRes.registrations || []);
       }
     } catch (err) {
-      console.error('Failed to load tournaments:', err);
+      console.error('Failed to load tournaments and player profile:', err);
     } finally {
       setLoading(false);
     }
@@ -66,17 +74,24 @@ export default function PlayerAvailableTournaments() {
   }, []);
 
   const openApplyModal = (tournament) => {
-    setSelectedTournament(tournament);
-    const initialCategory = tournament.categories?.[0] || null;
+    const categories = (tournament.categories || []).filter((category) =>
+      isCategoryEligible(category, player)
+    );
+    setSelectedTournament({ ...tournament, categories });
+    const initialCategory =
+      categories.find(
+        (category) =>
+          !applications.some(
+            (application) =>
+              String(application.tournament?._id) === String(tournament._id) &&
+              application.categoryCode === category.code &&
+              isActiveApplication(application)
+          )
+      ) || null;
     setSelectedCategory(initialCategory);
     setFormError('');
     setFormSuccess(null);
     setAgreeRules(false);
-    setEmergencyContact({
-      name: user?.name ? `${user.name} Contact` : '',
-      phone: '9820011223',
-      relation: 'Family',
-    });
   };
 
   const closeApplyModal = () => {
@@ -91,24 +106,12 @@ export default function PlayerAvailableTournaments() {
     setFormError('');
 
     if (!agreeRules) {
-      setFormError('Please review and accept the official Thane District tournament rules.');
+      setFormError('Please confirm your eligibility and accept the tournament rules.');
       return;
     }
 
-    if (!selectedCategory) {
-      setFormError('Please select a tournament category.');
-      return;
-    }
-
-    if (selectedCategory.format === 'doubles') {
-      if (!partnerDetails.name.trim() || !partnerDetails.email.trim()) {
-        setFormError('Doubles and Mixed Doubles require partner full name and partner email.');
-        return;
-      }
-    }
-
-    if (!emergencyContact.name.trim() || !emergencyContact.phone.trim()) {
-      setFormError('Emergency contact name and phone number are required.');
+    if (!player?.fullName || !player?.email || !player?.phone || !selectedCategory) {
+      setFormError('Complete your name, email, contact number, and age category in your profile before applying.');
       return;
     }
 
@@ -117,11 +120,7 @@ export default function PlayerAvailableTournaments() {
       const payload = {
         tournamentId: selectedTournament._id,
         categoryCode: selectedCategory.code,
-        partnerDetails: selectedCategory.format === 'doubles' ? partnerDetails : undefined,
-        emergencyContact,
-        shirtSize,
-        paymentMethod,
-        paymentReference,
+        eligibilityConfirmed: true,
       };
 
       const res = await apiRequest('/player/registrations', {
@@ -131,6 +130,7 @@ export default function PlayerAvailableTournaments() {
 
       if (res.success) {
         setFormSuccess(res.registration);
+        setApplications((current) => [...current, res.registration]);
         notify('Application submitted successfully! Application ID: ' + res.registration.registrationNumber, 'success');
       }
     } catch (err) {
@@ -142,10 +142,15 @@ export default function PlayerAvailableTournaments() {
 
   // Filter tournaments
   const filtered = tournaments.filter((t) => {
+    const eligibleCategories = (t.categories || []).filter((category) =>
+      isCategoryEligible(category, player)
+    );
+    if (!eligibleCategories.length) return false;
+
     const matchesSearch =
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.venue.toLowerCase().includes(search.toLowerCase()) ||
-      t.city.toLowerCase().includes(search.toLowerCase());
+      String(t.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      String(t.venue || '').toLowerCase().includes(search.toLowerCase()) ||
+      String(t.city || '').toLowerCase().includes(search.toLowerCase());
     if (!matchesSearch) return false;
 
     if (statusFilter !== 'all') {
@@ -154,7 +159,7 @@ export default function PlayerAvailableTournaments() {
     }
 
     if (formatFilter !== 'all') {
-      const hasFormat = t.categories?.some((c) => {
+      const hasFormat = eligibleCategories.some((c) => {
         if (formatFilter === 'mixed') return c.gender === 'Mixed';
         return c.format === formatFilter;
       });
@@ -162,7 +167,7 @@ export default function PlayerAvailableTournaments() {
     }
 
     if (ageFilter !== 'all') {
-      const hasAge = t.categories?.some((c) => c.ageGroup === ageFilter);
+      const hasAge = eligibleCategories.some((c) => c.ageGroup === ageFilter);
       if (!hasAge) return false;
     }
 
@@ -223,6 +228,7 @@ export default function PlayerAvailableTournaments() {
               <option value="U19">Under-19</option>
               <option value="Open">Open</option>
               <option value="35+">Veterans 35+</option>
+              <option value="45+">Veterans 45+</option>
             </select>
           </div>
 
@@ -252,6 +258,18 @@ export default function PlayerAvailableTournaments() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filtered.map((t) => {
             const isClosed = t.registrationStatus === 'closed' || new Date(t.registrationDeadline) < new Date();
+            const eligibleCategories = (t.categories || []).filter((category) =>
+              isCategoryEligible(category, player)
+            );
+            const hasUnappliedCategory = eligibleCategories.some(
+              (category) =>
+                !applications.some(
+                  (application) =>
+                    String(application.tournament?._id) === String(t._id) &&
+                    application.categoryCode === category.code &&
+                    isActiveApplication(application)
+                )
+            );
             return (
               <div
                 key={t._id}
@@ -302,7 +320,7 @@ export default function PlayerAvailableTournaments() {
                     <div className="flex items-center gap-2 text-[11px] text-[#243044]/60">
                       <Users className="w-3.5 h-3.5 text-[#C5A98D] shrink-0" />
                       <span>
-                        Categories: {t.categories?.map((c) => c.name).join(', ')}
+                        Eligible events: {eligibleCategories.map((c) => c.name).join(', ')}
                       </span>
                     </div>
                   </div>
@@ -311,20 +329,20 @@ export default function PlayerAvailableTournaments() {
                     <div>
                       <div className="text-[10px] text-[#243044]/60 uppercase font-bold">Entry Fee From</div>
                       <div className="text-sm font-black text-[#5B806B]">
-                        ₹{t.categories?.[0]?.fee || 500}
+                        ₹{eligibleCategories[0]?.fee ?? 0}
                       </div>
                     </div>
 
                     <button
                       onClick={() => openApplyModal(t)}
-                      disabled={isClosed}
+                      disabled={isClosed || !hasUnappliedCategory}
                       className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs ${
-                        isClosed
+                        isClosed || !hasUnappliedCategory
                           ? 'bg-[#E8DCC7] text-[#243044]/40 cursor-not-allowed'
                           : 'bg-[#5B806B] hover:bg-[#4a6b57] text-white'
                       }`}
                     >
-                      {isClosed ? 'Closed' : 'Apply Now'}
+                      {isClosed ? 'Closed' : hasUnappliedCategory ? 'Apply Now' : 'Applied'}
                     </button>
                   </div>
                 </div>
@@ -376,11 +394,13 @@ export default function PlayerAvailableTournaments() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#243044]/60">Application Status:</span>
-                    <span className="font-bold text-amber-600 uppercase">Pending Approval</span>
+                    <span className="font-bold text-amber-600 uppercase">{formSuccess.status}</span>
                   </div>
                 </div>
                 <p className="text-xs text-[#243044]/70">
-                  Your entry is queued for admin verification. You will receive real-time notifications on approval.
+                  {formSuccess.status === 'waitlisted'
+                    ? 'Your entry is waitlisted. You will receive a notification if a place becomes available.'
+                    : 'Your entry is queued for admin verification. You will receive a notification when its status changes.'}
                 </p>
                 <div className="pt-2">
                   <button
@@ -412,11 +432,21 @@ export default function PlayerAvailableTournaments() {
                   </div>
                 )}
 
-                {/* Auto-fetched player details */}
-                <div className="p-3.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7] space-y-1">
-                  <div className="font-bold text-[#243044]">Player Applicant: {user?.name}</div>
-                  <div className="text-[11px] text-[#243044]/70">
-                    Email: {user?.email} • Club: {user?.club || 'Thane District Registered'}
+                <div className="p-3.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7]">
+                  <div className="font-bold text-[#243044] mb-2">Review your profile details</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-[#243044]/70">
+                    <div>Name: <span className="font-semibold text-[#243044]">{player?.fullName}</span></div>
+                    <div>Email: <span className="font-semibold text-[#243044]">{player?.email}</span></div>
+                    <div>Contact: <span className="font-semibold text-[#243044]">{player?.phone}</span></div>
+                    <div>Gender: <span className="font-semibold text-[#243044]">{player?.gender}</span></div>
+                    <div>Age category: <span className="font-semibold text-[#243044]">{player?.ageGroup}</span></div>
+                    <div>Club: <span className="font-semibold text-[#243044]">{player?.club || 'Not provided'}</span></div>
+                    <div>City: <span className="font-semibold text-[#243044]">{player?.city || 'Not provided'}</span></div>
+                    <div>Playing hand: <span className="font-semibold text-[#243044]">{player?.handedness || 'Not provided'}</span></div>
+                    <div>Skill level: <span className="font-semibold text-[#243044]">{player?.skillLevel || 'Not provided'}</span></div>
+                    <div>Date of birth: <span className="font-semibold text-[#243044]">
+                      {player?.dateOfBirth ? new Date(player.dateOfBirth).toLocaleDateString() : 'Not provided'}
+                    </span></div>
                   </div>
                 </div>
 
@@ -436,101 +466,50 @@ export default function PlayerAvailableTournaments() {
                     className="w-full p-2.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7] text-sm text-[#243044] font-semibold focus:outline-none focus:border-[#5B806B]"
                   >
                     {selectedTournament.categories?.map((cat) => (
-                      <option key={cat.code} value={cat.code}>
+                      <option
+                        key={cat.code}
+                        value={cat.code}
+                        disabled={applications.some(
+                          (application) =>
+                            String(application.tournament?._id) === String(selectedTournament._id) &&
+                            application.categoryCode === cat.code &&
+                            isActiveApplication(application)
+                        )}
+                      >
                         {cat.name} ({cat.gender} • {cat.ageGroup}) — Entry: ₹{cat.fee}
+                        {applications.some(
+                          (application) =>
+                            String(application.tournament?._id) === String(selectedTournament._id) &&
+                            application.categoryCode === cat.code &&
+                            isActiveApplication(application)
+                        )
+                          ? ' — Already applied'
+                          : ''}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                {/* Doubles Partner Details (if doubles) */}
                 {selectedCategory?.format === 'doubles' && (
-                  <div className="p-3.5 rounded-xl bg-[#E8DCC7]/25 border border-[#E8DCC7] space-y-3">
-                    <div className="font-bold text-[#243044] flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-[#5B806B]" />
-                      <span>Doubles Partner Information (Required)</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-[#243044]/80 mb-0.5">
-                          Partner Full Name
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="e.g. Tanvi Gokhale"
-                          value={partnerDetails.name}
-                          onChange={(e) =>
-                            setPartnerDetails({ ...partnerDetails, name: e.target.value })
-                          }
-                          className="w-full p-2 rounded-lg bg-white border border-[#E8DCC7] text-xs text-[#243044] focus:outline-none focus:border-[#5B806B]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-[#243044]/80 mb-0.5">
-                          Partner Email
-                        </label>
-                        <input
-                          type="email"
-                          required
-                          placeholder="partner@example.com"
-                          value={partnerDetails.email}
-                          onChange={(e) =>
-                            setPartnerDetails({ ...partnerDetails, email: e.target.value })
-                          }
-                          className="w-full p-2 rounded-lg bg-white border border-[#E8DCC7] text-xs text-[#243044] focus:outline-none focus:border-[#5B806B]"
-                        />
-                      </div>
-                    </div>
+                  <div className="p-3.5 rounded-xl bg-[#E8DCC7]/25 border border-[#E8DCC7] text-[11px] text-[#243044]/80">
+                    Doubles partner details can be coordinated with the tournament organizer after your application.
                   </div>
                 )}
 
-                {/* Emergency Contact */}
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block font-bold text-[#243044] mb-1">
-                      Emergency Contact Name
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Contact Name"
-                      value={emergencyContact.name}
-                      onChange={(e) =>
-                        setEmergencyContact({ ...emergencyContact, name: e.target.value })
-                      }
-                      className="w-full p-2.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7] text-xs text-[#243044] focus:outline-none focus:border-[#5B806B]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-[#243044] mb-1">
-                      Emergency Phone
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="Phone Number"
-                      value={emergencyContact.phone}
-                      onChange={(e) =>
-                        setEmergencyContact({ ...emergencyContact, phone: e.target.value })
-                      }
-                      className="w-full p-2.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7] text-xs text-[#243044] focus:outline-none focus:border-[#5B806B]"
-                    />
-                  </div>
-                </div>
-
-                {/* Rules & Eligibility Display */}
                 <div className="p-3.5 rounded-xl bg-[#F5F4EF] border border-[#E8DCC7] space-y-1.5 max-h-28 overflow-y-auto">
                   <div className="font-bold text-[#243044] flex items-center gap-1">
                     <FileText className="w-3 h-3 text-[#5B806B]" />
-                    <span>Tournament Rules & Eligibility</span>
+                    <span>Event Rules & Eligibility</span>
                   </div>
-                  <ul className="list-disc pl-4 text-[10px] text-[#243044]/70 space-y-0.5">
-                    <li>Player must reside or train within Thane District, Maharashtra.</li>
-                    <li>Non-marking badminton court shoes are mandatory.</li>
-                    <li>Rally scoring 3x21 BWF rules apply across all match brackets.</li>
-                    <li>Reporting time: 20 minutes prior to scheduled fixture time.</li>
-                  </ul>
+                  {selectedTournament.rules?.length ? (
+                    <ul className="list-disc pl-4 text-[10px] text-[#243044]/70 space-y-0.5">
+                      {selectedTournament.rules.map((rule, index) => <li key={`${index}-${rule}`}>{rule}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="text-[10px] text-[#243044]/70">
+                      Eligible for {selectedCategory?.name} based on your saved gender and age category.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 pt-1">
@@ -542,7 +521,7 @@ export default function PlayerAvailableTournaments() {
                     className="w-4 h-4 rounded text-[#5B806B] focus:ring-0 cursor-pointer"
                   />
                   <label htmlFor="rulesAgreement" className="text-[11px] text-[#243044]/80 cursor-pointer">
-                    I confirm my district eligibility and agree to abide by TDBA rules.
+                    I confirm I meet this event's eligibility requirements and agree to its rules.
                   </label>
                 </div>
 

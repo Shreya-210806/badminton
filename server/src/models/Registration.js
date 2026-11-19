@@ -19,9 +19,9 @@ export default defineModel('Registration', {
     },
     team: { type: 'id', default: null },
     emergencyContact: {
-      name: { type: 'string', required: true },
+      name: { type: 'string', default: '' },
       relation: { type: 'string', default: 'Family' },
-      phone: { type: 'string', required: true },
+      phone: { type: 'string', default: '' },
     },
     status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'waitlisted', 'cancelled'], default: 'pending' },
     paymentStatus: { type: 'string', enum: ['unpaid', 'pending', 'paid', 'refunded'], default: 'unpaid' },

@@ -4,6 +4,8 @@ import {
   Trophy,
   Mail,
   Lock,
+  Eye,
+  EyeOff,
   ArrowRight,
   Shield,
   CheckCircle2,
@@ -20,13 +22,16 @@ export default function AuthPage() {
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   // Register form state
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
   const [regPhone, setRegPhone] = useState('');
   const [regGender, setRegGender] = useState('Male');
+  const [regAgeGroup, setRegAgeGroup] = useState('Open');
   const [regClub, setRegClub] = useState('Dadoji Konddev Stadium, Thane');
 
   const thaneClubsList = [
@@ -76,6 +81,7 @@ export default function AuthPage() {
         password: regPassword,
         phone: regPhone,
         gender: regGender,
+        ageGroup: regAgeGroup,
         club: regClub || 'Dadoji Konddev Stadium, Thane',
         skillLevel: 'Intermediate',
       });
@@ -157,7 +163,7 @@ export default function AuthPage() {
                   <input
                     type="email"
                     required
-                    placeholder="player@thanebadminton.org"
+                    autoComplete="username"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-[#F5F4EF] hover:bg-white focus:bg-white border border-[#E8DCC7] rounded-xl text-sm text-[#243044] placeholder-[#243044]/40 focus:outline-none focus:border-[#5B806B] transition-all"
@@ -170,13 +176,22 @@ export default function AuthPage() {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-[#C5A98D] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
-                    type="password"
+                    type={showLoginPassword ? 'text' : 'password'}
                     required
-                    placeholder="••••••••"
+                    autoComplete="current-password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#F5F4EF] hover:bg-white focus:bg-white border border-[#E8DCC7] rounded-xl text-sm text-[#243044] placeholder-[#243044]/40 focus:outline-none focus:border-[#5B806B] transition-all"
+                    className="w-full pl-10 pr-12 py-2.5 bg-[#F5F4EF] hover:bg-white focus:bg-white border border-[#E8DCC7] rounded-xl text-sm text-[#243044] focus:outline-none focus:border-[#5B806B] transition-all"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword((visible) => !visible)}
+                    aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showLoginPassword}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#C5A98D] hover:text-[#5B806B] focus:outline-none focus:text-[#5B806B]"
+                  >
+                    {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -209,7 +224,7 @@ export default function AuthPage() {
                 <input
                   type="email"
                   required
-                  placeholder="aditya@example.com"
+                  autoComplete="email"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-[#F5F4EF] hover:bg-white focus:bg-white border border-[#E8DCC7] rounded-xl text-sm text-[#243044] placeholder-[#243044]/40 focus:outline-none focus:border-[#5B806B] transition-all"
@@ -218,13 +233,38 @@ export default function AuthPage() {
 
               <div>
                 <label className="block text-xs font-bold text-[#243044] mb-1">Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-[#C5A98D] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showRegPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    autoComplete="new-password"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    className="w-full pl-10 pr-12 py-2.5 bg-[#F5F4EF] hover:bg-white focus:bg-white border border-[#E8DCC7] rounded-xl text-sm text-[#243044] focus:outline-none focus:border-[#5B806B] transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegPassword((visible) => !visible)}
+                    aria-label={showRegPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showRegPassword}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#C5A98D] hover:text-[#5B806B] focus:outline-none focus:text-[#5B806B]"
+                  >
+                    {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#243044] mb-1">Contact Number</label>
                 <input
-                  type="password"
+                  type="tel"
                   required
                   minLength={6}
-                  placeholder="At least 6 characters"
-                  value={regPassword}
-                  onChange={(e) => setRegPassword(e.target.value)}
+                  placeholder="e.g. +91 98200 11223"
+                  value={regPhone}
+                  onChange={(e) => setRegPhone(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-[#F5F4EF] hover:bg-white focus:bg-white border border-[#E8DCC7] rounded-xl text-sm text-[#243044] placeholder-[#243044]/40 focus:outline-none focus:border-[#5B806B] transition-all"
                 />
               </div>
@@ -238,6 +278,22 @@ export default function AuthPage() {
                 >
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#243044] mb-1">Age Category</label>
+                <select
+                  value={regAgeGroup}
+                  onChange={(e) => setRegAgeGroup(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[#F5F4EF] border border-[#E8DCC7] rounded-xl text-sm text-[#243044] focus:outline-none focus:border-[#5B806B] transition-all"
+                >
+                  <option value="U15">Under-15</option>
+                  <option value="U19">Under-19</option>
+                  <option value="Open">Open</option>
+                  <option value="35+">35+</option>
+                  <option value="45+">45+</option>
                 </select>
               </div>
 
